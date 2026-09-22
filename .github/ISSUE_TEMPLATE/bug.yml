@@ -1,0 +1,43 @@
+name: Signaler un problème
+description: Un comportement inattendu, une erreur, une chute de performance.
+labels: [bug]
+body:
+  - type: textarea
+    id: probleme
+    attributes:
+      label: Ce qui se passe
+      description: Ce que vous avez fait, ce que vous attendiez, ce qui s'est produit.
+    validations:
+      required: true
+
+  - type: input
+    id: gpu
+    attributes:
+      label: Moteur de rendu
+      description: >
+        Ligne affichée dans la console du navigateur au démarrage,
+        commençant par « [gpu] moteur de rendu ».
+      placeholder: 'ANGLE (Intel, Intel(R) UHD Graphics, Direct3D11)'
+    validations:
+      required: true
+
+  - type: input
+    id: navigateur
+    attributes:
+      label: Navigateur et système
+      placeholder: 'Chrome 140, Windows 11'
+    validations:
+      required: true
+
+  - type: input
+    id: fps
+    attributes:
+      label: Images par seconde
+      description: Valeur affichée dans le HUD, s'il s'agit de performance.
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Erreurs de la console
+      description: Messages en rouge dans la console du navigateur, s'il y en a.
+      render: text

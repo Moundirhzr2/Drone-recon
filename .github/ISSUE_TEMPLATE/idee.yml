@@ -1,0 +1,17 @@
+name: Proposer une amélioration
+description: Une fonctionnalité, un aléa supplémentaire, un meilleur réglage.
+labels: [amélioration]
+body:
+  - type: textarea
+    id: besoin
+    attributes:
+      label: Le besoin
+      description: Quel problème cette amélioration résout-elle ?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposition
+    attributes:
+      label: La proposition
+      description: Comment la verriez-vous fonctionner ?
