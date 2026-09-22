@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Une nouvelle poussée annule la vérification précédente de la même branche :
+# inutile de payer une exécution complète pour un état déjà dépassé.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Format, lint, types, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm ci` et non `npm install` : l'installation suit strictement le
+      # fichier de verrouillage, donc la CI teste bien les mêmes versions que
+      # celles qui seront installées ailleurs.
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Vérifier le formatage
+        run: npm run format:check
+
+      - name: Linter
+        run: npm run lint
+
+      - name: Vérifier les types
+        run: npm run typecheck
+
+      - name: Construire
+        run: npm run build
+
+      # Le paquet Cesium est volumineux et ses ressources sont copiées à part :
+      # on vérifie qu'elles ont bien atterri, car leur absence ne casse pas la
+      # construction mais produit une page blanche à l'exécution.
+      - name: Vérifier les ressources Cesium
+        run: |
+          test -d dist/cesiumStatic/Workers || { echo "cesiumStatic/Workers manquant"; exit 1; }
+          test -d dist/cesiumStatic/Assets  || { echo "cesiumStatic/Assets manquant";  exit 1; }
+          echo "Ressources Cesium présentes."
