@@ -1,0 +1,55 @@
+{
+  "name": "drone-recon",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Simulateur de reconnaissance par drone : pilotage gestuel MediaPipe, diagnostic de dommages et simulateur de désastres, dans une ville 3D.",
+  "keywords": [
+    "cesium",
+    "mediapipe",
+    "hand-tracking",
+    "drone",
+    "simulation",
+    "webgl",
+    "typescript",
+    "disaster-simulation"
+  ],
+  "author": "Moundir Houazar <moundir.hzr@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Moundirhzr2/drone-recon.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Moundirhzr2/drone-recon/issues"
+  },
+  "homepage": "https://github.com/Moundirhzr2/drone-recon#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run build"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.21",
+    "cesium": "^1.132.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.6.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.70.1",
+    "vite": "^6.0.11",
+    "vite-plugin-static-copy": "^2.2.0"
+  }
+}

@@ -1,0 +1,36 @@
+# Dépendances
+node_modules/
+
+# Sorties de build
+dist/
+*.tsbuildinfo
+
+# Variables d'environnement — .env.example est versionné, les vraies clés non
+.env
+.env.*
+!.env.example
+
+# Journaux et rapports
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+coverage/
+
+# Caches d'outils
+.vite/
+.eslintcache
+
+# Éditeurs
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+
+# Systèmes de fichiers
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Configuration locale d'outils, propre à chaque poste
+.claude/

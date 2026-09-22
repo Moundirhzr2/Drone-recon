@@ -1,0 +1,11 @@
+# Normalise les fins de ligne : le dépôt stocke en LF, Windows travaille en CRLF.
+* text=auto eol=lf
+
+# Binaires, à ne jamais convertir ni differ.
+*.png  binary
+*.jpg  binary
+*.webp binary
+*.ico  binary
+
+# Fichiers générés : exclus des statistiques de langage et repliés dans les diffs.
+package-lock.json linguist-generated=true -diff

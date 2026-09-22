@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Drone Recon — Mulhouse</title>
+    <script>
+      // Redondance volontaire avec le `define` de vite.config.ts : ceinture et bretelles.
+      window.CESIUM_BASE_URL = '/cesiumStatic';
+    </script>
+    <link rel="stylesheet" href="/src/hud/hud.css" />
+  </head>
+  <body>
+    <!-- Vue principale : la scene Cesium -->
+    <div id="cesium"></div>
+    <!-- Overlay de diagnostic dessine par-dessus la vue principale -->
+    <canvas id="overlay-main"></canvas>
+
+    <!-- HUD GPS : haut gauche -->
+    <section id="hud-gps" class="panel">
+      <header>
+        <span class="dot" id="gps-fix"></span> TELEMETRIE
+        <span class="spacer"></span>
+        <span id="gps-mode" class="tag">MANUEL</span>
+      </header>
+      <div class="rows" id="gps-rows"></div>
+      <div class="compass">
+        <svg viewBox="-60 -60 120 120" id="compass-svg">
+          <circle cx="0" cy="0" r="52" class="c-ring" />
+          <g id="compass-rose">
+            <text x="0" y="-38" class="c-card">N</text>
+            <text x="40" y="5" class="c-card">E</text>
+            <text x="0" y="46" class="c-card">S</text>
+            <text x="-40" y="5" class="c-card">O</text>
+            <line x1="0" y1="-52" x2="0" y2="-44" class="c-tick" />
+          </g>
+          <polygon points="0,-30 7,10 0,3 -7,10" class="c-needle" />
+        </svg>
+        <div class="c-val"><b id="compass-deg">000</b>°</div>
+      </div>
+    </section>
+
+    <!-- Vue nadir : haut droite -->
+    <section id="hud-nadir" class="panel">
+      <header>
+        <span class="dot live"></span> CAMERA NADIR
+        <span class="spacer"></span>
+        <span id="nadir-mode" class="tag">BRUT</span>
+      </header>
+      <div class="nadir-stack">
+        <canvas id="nadir-canvas" width="340" height="340"></canvas>
+        <canvas id="nadir-overlay" width="340" height="340"></canvas>
+        <div class="reticle"></div>
+        <div class="nadir-foot"><span id="nadir-footprint">—</span></div>
+      </div>
+      <div class="nadir-stats" id="nadir-stats"></div>
+    </section>
+
+    <!-- Retour camera + etat des mains : bas gauche -->
+    <section id="hud-hands" class="panel">
+      <header>
+        <span class="dot" id="hands-dot"></span> PILOTAGE
+        <span class="spacer"></span>
+        <span id="hands-source" class="tag">CLAVIER</span>
+      </header>
+      <div class="cam-stack">
+        <video id="webcam" playsinline muted></video>
+        <canvas id="hands-canvas" width="240" height="180"></canvas>
+      </div>
+      <div class="sticks">
+        <div class="stick" data-label="G"><div class="knob" id="stick-l"></div></div>
+        <div class="stick" data-label="D"><div class="knob" id="stick-r"></div></div>
+      </div>
+      <div class="hands-msg" id="hands-msg">Mains inactives — touche H pour activer</div>
+    </section>
+
+    <!-- Rapport de diagnostic : bas droite -->
+    <section id="hud-report" class="panel collapsed">
+      <header id="report-header">
+        <span class="dot warn"></span> DIAGNOSTIC
+        <span class="spacer"></span>
+        <span id="report-count" class="tag">0</span>
+      </header>
+      <div class="report-body" id="report-body"></div>
+    </section>
+
+    <!-- Simulateur de desastres : partie 2 -->
+    <section id="hud-disaster" class="panel collapsed">
+      <header id="disaster-header">
+        <span class="dot" id="disaster-dot"></span> SIMULATEUR
+        <span class="spacer"></span>
+        <span id="disaster-tag" class="tag">INACTIF</span>
+      </header>
+      <div class="disaster-body">
+        <div class="dis-kinds" id="dis-kinds"></div>
+        <p class="dis-blurb" id="dis-blurb"></p>
+
+        <label class="dis-field">
+          <span id="dis-mag-label">Intensite</span>
+          <input type="range" id="dis-mag" min="5" max="10" step="0.5" value="8.5" />
+          <b id="dis-mag-value">8.5</b>
+        </label>
+
+        <label class="dis-field" id="dis-wind-field">
+          <span>Vent de</span>
+          <input type="range" id="dis-wind" min="0" max="350" step="10" value="225" />
+          <b id="dis-wind-value">225&deg;</b>
+        </label>
+
+        <div class="dis-transport">
+          <button id="dis-play" class="dis-btn wide">Lancer</button>
+          <button id="dis-start" class="dis-btn" title="Revenir avant le sinistre">Avant</button>
+          <button id="dis-end" class="dis-btn" title="Sauter au bilan final">Apres</button>
+          <button id="dis-reset" class="dis-btn" title="Annuler le sinistre">Annuler</button>
+        </div>
+
+        <input
+          type="range"
+          id="dis-scrub"
+          class="dis-scrub"
+          min="0"
+          max="1000"
+          step="1"
+          value="0"
+        />
+        <div class="dis-clock"><span id="dis-time">0.0 s</span><span id="dis-of">/ 0 s</span></div>
+
+        <div class="dis-tally" id="dis-tally"></div>
+        <div class="dis-note" id="dis-note">Choisir un alea, puis Lancer.</div>
+      </div>
+    </section>
+
+    <!-- Galerie de photos -->
+    <section id="hud-gallery" class="panel"><div id="gallery-strip"></div></section>
+
+    <!-- Bandeau de commandes -->
+    <footer id="keymap"></footer>
+
+    <!-- Flash de prise de vue -->
+    <div id="shutter"></div>
+
+    <!-- Ecran de chargement -->
+    <div id="boot">
+      <div class="boot-inner">
+        <h1>DRONE RECON</h1>
+        <p id="boot-msg">Initialisation…</p>
+        <div class="boot-bar"><i id="boot-bar"></i></div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

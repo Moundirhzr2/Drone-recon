@@ -1,0 +1,863 @@
+/* ============================================================
+   HUD — esthétique "station de contrôle" : cyan sur noir, mono
+   ============================================================ */
+:root {
+  --bg: #04070b;
+  --panel: rgba(6, 14, 20, 0.82);
+  --edge: rgba(0, 229, 255, 0.28);
+  --edge-soft: rgba(0, 229, 255, 0.12);
+  --ink: #cdefff;
+  --ink-dim: #6d8b9c;
+  --accent: #00e5ff;
+  --ok: #00e676;
+  --warn: #ffc400;
+  --hot: #ff6d00;
+  --bad: #ff1744;
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+#cesium {
+  position: absolute;
+  inset: 0;
+}
+#cesium .cesium-widget-credits {
+  display: none !important;
+}
+#cesium .cesium-viewer-bottom {
+  display: none !important;
+}
+
+#overlay-main {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* Taille explicite : un canvas est un élément remplacé, et `inset: 0` seul
+     ne contraint pas sa largeur — elle retomberait sur l'attribut `width`. */
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* ---------- Châssis commun des panneaux ---------- */
+.panel {
+  position: absolute;
+  z-index: 10;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  backdrop-filter: blur(6px);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.5),
+    0 8px 30px rgba(0, 0, 0, 0.55);
+}
+
+.panel > header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+  border-bottom: 1px solid var(--edge-soft);
+  background: linear-gradient(180deg, rgba(0, 229, 255, 0.07), transparent);
+}
+
+.panel > header .spacer {
+  flex: 1;
+}
+
+.tag {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  padding: 1px 5px;
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  color: var(--ink);
+}
+.tag.on {
+  background: var(--accent);
+  color: #002029;
+  border-color: var(--accent);
+}
+.tag.hot {
+  background: var(--hot);
+  color: #1a0a00;
+  border-color: var(--hot);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-dim);
+  box-shadow: 0 0 6px currentColor;
+  flex: none;
+}
+.dot.live {
+  background: var(--ok);
+  color: var(--ok);
+  animation: pulse 2s infinite;
+}
+.dot.warn {
+  background: var(--warn);
+  color: var(--warn);
+}
+.dot.off {
+  background: var(--ink-dim);
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ---------- Télémétrie GPS (haut gauche) ---------- */
+#hud-gps {
+  top: 12px;
+  left: 12px;
+  width: 268px;
+}
+#gps-rows {
+  padding: 6px 8px;
+  display: grid;
+  gap: 2px;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  line-height: 1.5;
+}
+.row .k {
+  color: var(--ink-dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  width: 74px;
+  flex: none;
+}
+.row .v {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.row .u {
+  color: var(--ink-dim);
+  font-size: 10px;
+}
+.row.hi .v {
+  color: var(--accent);
+}
+
+.bar {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+  flex: 1;
+}
+.bar i {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+  transition:
+    width 0.3s,
+    background 0.3s;
+}
+
+.compass {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 2px 8px 8px;
+  border-top: 1px solid var(--edge-soft);
+}
+#compass-svg {
+  width: 62px;
+  height: 62px;
+}
+.c-ring {
+  fill: rgba(0, 229, 255, 0.04);
+  stroke: var(--edge);
+  stroke-width: 1;
+}
+.c-card {
+  fill: var(--ink-dim);
+  font-size: 13px;
+  text-anchor: middle;
+  font-family: var(--mono);
+}
+.c-tick {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.c-needle {
+  fill: var(--accent);
+}
+.c-val {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.c-val b {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---------- Caméra nadir (haut droite) ---------- */
+#hud-nadir {
+  top: 12px;
+  right: 12px;
+  width: 342px;
+}
+.nadir-stack {
+  position: relative;
+  width: 340px;
+  height: 340px;
+  background: #000;
+}
+#nadir-canvas,
+#nadir-overlay {
+  position: absolute;
+  inset: 0;
+  width: 340px;
+  height: 340px;
+  display: block;
+}
+#nadir-overlay {
+  pointer-events: none;
+}
+
+.reticle {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.reticle::before,
+.reticle::after {
+  content: '';
+  position: absolute;
+  background: rgba(0, 229, 255, 0.5);
+}
+.reticle::before {
+  left: 50%;
+  top: 46%;
+  width: 1px;
+  height: 8%;
+}
+.reticle::after {
+  top: 50%;
+  left: 46%;
+  height: 1px;
+  width: 8%;
+}
+
+.nadir-foot {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  font-size: 10px;
+  color: var(--accent);
+  text-shadow:
+    0 0 4px #000,
+    0 1px 2px #000;
+}
+
+.nadir-stats {
+  display: flex;
+  gap: 0;
+  border-top: 1px solid var(--edge-soft);
+}
+.nadir-stats .st {
+  flex: 1;
+  padding: 4px 6px;
+  text-align: center;
+  border-right: 1px solid var(--edge-soft);
+}
+.nadir-stats .st:last-child {
+  border-right: 0;
+}
+.nadir-stats .st b {
+  display: block;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.nadir-stats .st span {
+  font-size: 9px;
+  color: var(--ink-dim);
+  letter-spacing: 0.08em;
+}
+
+/* ---------- Pilotage / mains (bas gauche) ---------- */
+#hud-hands {
+  bottom: 12px;
+  left: 12px;
+  width: 242px;
+}
+.cam-stack {
+  position: relative;
+  width: 240px;
+  height: 180px;
+  background: #000;
+}
+#webcam,
+#hands-canvas {
+  position: absolute;
+  inset: 0;
+  width: 240px;
+  height: 180px;
+  transform: scaleX(-1); /* miroir : le pilote se voit comme dans une glace */
+  object-fit: cover;
+}
+#webcam {
+  opacity: 0.55;
+}
+
+.sticks {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+}
+.stick {
+  position: relative;
+  flex: 1;
+  aspect-ratio: 1;
+  border: 1px solid var(--edge-soft);
+  border-radius: 2px;
+  background:
+    linear-gradient(
+      to right,
+      transparent 49.5%,
+      var(--edge-soft) 49.5%,
+      var(--edge-soft) 50.5%,
+      transparent 50.5%
+    ),
+    linear-gradient(
+      to bottom,
+      transparent 49.5%,
+      var(--edge-soft) 49.5%,
+      var(--edge-soft) 50.5%,
+      transparent 50.5%
+    );
+}
+.stick::after {
+  content: attr(data-label);
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 9px;
+  color: var(--ink-dim);
+}
+.knob {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  transition: background 0.2s;
+}
+.hands-msg {
+  padding: 4px 8px 7px;
+  font-size: 10px;
+  color: var(--ink-dim);
+  border-top: 1px solid var(--edge-soft);
+  line-height: 1.4;
+}
+.hands-msg.err {
+  color: var(--bad);
+}
+.hands-msg.ok {
+  color: var(--ok);
+}
+
+/* ---------- Simulateur de desastres (gauche, sous la telemetrie) ---------- */
+/* Colonne de droite, sous la vue nadir : la colonne de gauche est déjà pleine
+   (télémétrie en haut, pilotage en bas) et le panneau s'y chevauchait des deux
+   côtés. `max-height` + défilement interne garantissent qu'il ne déborde
+   jamais sur le rapport de diagnostic, même sur un écran court. */
+#hud-disaster {
+  top: 348px;
+  right: 12px;
+  width: 342px;
+  max-height: calc(100vh - 460px);
+  overflow-y: auto;
+  /* Sans cela, la moindre colonne de grille trop large ajoute une barre de
+     défilement horizontale et rogne le dernier bouton. */
+  overflow-x: hidden;
+}
+#hud-disaster > header {
+  cursor: pointer;
+}
+#hud-disaster.collapsed .disaster-body {
+  display: none;
+}
+
+.disaster-body {
+  padding: 7px 8px 9px;
+  display: grid;
+  gap: 7px;
+}
+
+.dis-kinds {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+.dis-kind {
+  font: inherit;
+  font-size: 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  letter-spacing: 0.06em;
+  padding: 5px 4px;
+  background: transparent;
+  border: 1px solid var(--edge-soft);
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+.dis-kind:hover {
+  border-color: var(--edge);
+  color: var(--ink);
+}
+.dis-kind.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #002029;
+}
+
+.dis-blurb {
+  margin: 0;
+  font-size: 9.5px;
+  line-height: 1.45;
+  color: var(--ink-dim);
+  min-height: 27px;
+}
+
+.dis-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--ink-dim);
+}
+.dis-field > span {
+  width: 70px;
+  flex: none;
+  letter-spacing: 0.05em;
+}
+.dis-field > b {
+  width: 40px;
+  text-align: right;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.dis-field input[type='range'] {
+  flex: 1;
+  min-width: 0;
+}
+
+.dis-transport {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+.dis-btn {
+  font: inherit;
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  padding: 5px 2px;
+  background: transparent;
+  border: 1px solid var(--edge-soft);
+  color: var(--ink);
+  cursor: pointer;
+}
+.dis-btn {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dis-btn:hover {
+  border-color: var(--accent);
+}
+.dis-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  border-color: var(--edge-soft);
+}
+.dis-btn.wide {
+  border-color: var(--edge);
+  color: var(--accent);
+}
+.dis-btn.wide.playing {
+  background: var(--hot);
+  border-color: var(--hot);
+  color: #1a0a00;
+}
+
+.dis-scrub {
+  width: 100%;
+}
+.dis-clock {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.dis-tally {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 3px;
+}
+.dis-cell {
+  text-align: center;
+  padding: 3px 1px;
+  border: 1px solid var(--edge-soft);
+}
+.dis-cell .n {
+  display: block;
+  font-size: 13px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.dis-cell .l {
+  display: block;
+  font-size: 7.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+}
+.dis-cell .d {
+  display: block;
+  font-size: 8px;
+  line-height: 1.3;
+}
+
+.dis-note {
+  font-size: 9.5px;
+  line-height: 1.45;
+  color: var(--ink-dim);
+  min-height: 14px;
+}
+.dis-note.ok {
+  color: var(--ok);
+}
+.dis-note.hot {
+  color: var(--hot);
+}
+
+/* Les curseurs par defaut jurent avec le reste du HUD. */
+#hud-disaster,
+#hud-disaster * {
+  box-sizing: border-box;
+}
+#hud-disaster input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  background: var(--edge-soft);
+  outline: none;
+  cursor: pointer;
+  /* Les navigateurs donnent 2px de marge laterale par defaut aux curseurs :
+     assez pour pousser la piste hors du panneau et rogner son extremite. */
+  margin: 0;
+}
+#hud-disaster input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  background: var(--accent);
+  cursor: pointer;
+}
+#hud-disaster input[type='range']::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border: none;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+/* ---------- Rapport de diagnostic (bas droite) ---------- */
+#hud-report {
+  bottom: 92px;
+  right: 12px;
+  width: 342px;
+}
+#report-header {
+  cursor: pointer;
+}
+.report-body {
+  max-height: 290px;
+  overflow-y: auto;
+  padding: 6px 8px;
+}
+#hud-report.collapsed .report-body {
+  display: none;
+}
+
+.dmg-legend {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.dmg-legend .lg {
+  flex: 1;
+  text-align: center;
+  padding: 3px 2px;
+  border-radius: 2px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+.dmg-legend .lg b {
+  display: block;
+  font-size: 13px;
+}
+
+.dl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.dl .sw {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  flex: none;
+}
+.dl .nm {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.dl .sc {
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+}
+
+.metrics {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--edge-soft);
+}
+.metrics .m {
+  flex: 1;
+}
+.metrics .m span {
+  font-size: 9px;
+  color: var(--ink-dim);
+  letter-spacing: 0.08em;
+}
+.metrics .m b {
+  display: block;
+  font-size: 15px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Galerie ---------- */
+#hud-gallery {
+  bottom: 12px;
+  right: 12px;
+  width: 342px;
+  padding: 5px;
+}
+#gallery-strip {
+  display: flex;
+  gap: 5px;
+  height: 58px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+#gallery-strip:empty::after {
+  content: 'Aucune prise de vue — ESPACE ou pincement main droite';
+  color: var(--ink-dim);
+  font-size: 10px;
+  align-self: center;
+  padding: 0 4px;
+}
+.shot {
+  position: relative;
+  flex: none;
+  width: 58px;
+  height: 58px;
+  border: 1px solid var(--edge-soft);
+  cursor: pointer;
+}
+.shot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.shot b {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.72);
+  font-size: 8px;
+  text-align: center;
+  color: var(--accent);
+  font-weight: 400;
+}
+.shot:hover {
+  border-color: var(--accent);
+}
+
+/* ---------- Bandeau de commandes ---------- */
+#keymap {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 46vw;
+}
+#keymap .km {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--panel);
+  border: 1px solid var(--edge-soft);
+  border-radius: 2px;
+  padding: 3px 6px;
+  font-size: 10px;
+  color: var(--ink-dim);
+}
+#keymap .km kbd {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent);
+  background: rgba(0, 229, 255, 0.1);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  padding: 0 4px;
+}
+
+/* ---------- Flash obturateur ---------- */
+#shutter {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  background: #fff;
+  opacity: 0;
+}
+#shutter.fire {
+  animation: flash 0.28s ease-out;
+}
+@keyframes flash {
+  0% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ---------- Écran de chargement ---------- */
+#boot {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 45%, #0a1a24, #02060a 70%);
+  transition: opacity 0.5s;
+}
+#boot.gone {
+  opacity: 0;
+  pointer-events: none;
+}
+.boot-inner {
+  text-align: center;
+}
+.boot-inner h1 {
+  font-size: 30px;
+  letter-spacing: 0.5em;
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-weight: 400;
+  text-shadow: 0 0 24px rgba(0, 229, 255, 0.5);
+}
+.boot-inner p {
+  color: var(--ink-dim);
+  font-size: 11px;
+  margin: 0 0 16px;
+  letter-spacing: 0.1em;
+}
+.boot-bar {
+  width: 260px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 auto;
+}
+.boot-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.4s;
+}
+
+/* ---------- Écrans étroits ---------- */
+@media (max-width: 1280px) {
+  #hud-nadir,
+  #hud-report,
+  #hud-gallery,
+  #hud-disaster {
+    width: 262px;
+  }
+  .nadir-stack {
+    width: 260px;
+    height: 260px;
+  }
+  #nadir-canvas,
+  #nadir-overlay {
+    width: 260px;
+    height: 260px;
+  }
+  #keymap {
+    max-width: 32vw;
+  }
+}
