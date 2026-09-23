@@ -24,6 +24,20 @@ ville, pour produire de nouvelles zones à reconnaître.
 
 Le tout tourne dans le navigateur, sans serveur ni clé d'API.
 
+## Contexte
+
+Ce projet est mené en collaboration avec un doctorant de
+l'[Université de Haute-Alsace](https://www.uha.fr), à Mulhouse, qui y développe
+les algorithmes destinés à le perfectionner.
+
+L'objectif à terme est de sortir de la simulation : transposer ce travail sur de
+vrais drones, pour aider les équipes de secours à évaluer rapidement les dégâts
+après une catastrophe.
+
+Le code s'y prête : chaque brique — détection, pilotage, simulation — est isolée
+derrière une interface remplaçable, de sorte qu'un algorithme issu de ces
+travaux peut s'y substituer sans toucher au reste.
+
 ## Fonctionnalités
 
 - **Environnement 3D** — ville générée de 76 bâtiments sur imagerie satellite,
