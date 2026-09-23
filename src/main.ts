@@ -42,6 +42,7 @@ import {
   HandsPanel,
   NadirPanel,
   ReportPanel,
+  showSoftwareRenderingWarning,
 } from './hud/hud';
 
 const RENDER_CYCLE: RenderMode[] = ['realiste', 'wireframe', 'scan'];
@@ -51,7 +52,7 @@ async function main(): Promise<void> {
   boot.set('Initialisation…', 0.05);
 
   // --- Monde -------------------------------------------------------------
-  const { viewer, scene, backendLabel } = await createWorld('cesium', boot.set);
+  const { viewer, scene, backendLabel, gpu } = await createWorld('cesium', boot.set);
 
   boot.set('Génération du tissu urbain…', 0.6);
   const city = generateCity();
@@ -227,6 +228,9 @@ async function main(): Promise<void> {
   boot.set(`Prêt — ${backendLabel}`, 1);
   setTimeout(() => boot.hide(), 450);
   handsPanel.setMessage('Prêt au décollage — H pour piloter aux mains', 'ok');
+  // Affiché ici et pas pendant la création de la scène : c'est seulement
+  // maintenant que l'interface existe pour le montrer.
+  if (gpu.software) showSoftwareRenderingWarning(gpu.renderer);
 
   let last = performance.now();
   let lastHud = 0;

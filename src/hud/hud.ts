@@ -373,6 +373,49 @@ export const boot = {
 };
 
 /** Flash d'obturateur. */
+/**
+ * Bandeau d'alerte : le navigateur calcule la 3D sans carte graphique.
+ *
+ * C'est un bandeau persistant et non un message du panneau de pilotage, pour
+ * deux raisons. Ce panneau est réécrit dès le démarrage (« Prêt au décollage »)
+ * et l'alerte y durerait moins d'une seconde. Et en rendu logiciel, le
+ * simulateur est inutilisable quoi qu'on fasse : c'est la première chose que
+ * l'utilisateur doit savoir, pas un détail à repérer au passage.
+ */
+export function showSoftwareRenderingWarning(renderer: string): void {
+  let el = document.getElementById('gpu-warning');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'gpu-warning';
+    el.setAttribute('role', 'alert');
+    document.body.appendChild(el);
+  }
+
+  el.innerHTML = '';
+  const title = document.createElement('strong');
+  title.textContent =
+    'Rendu logiciel : la 3D est calculée par le processeur, pas par la carte graphique.';
+
+  const fix = document.createElement('p');
+  fix.textContent =
+    "Le simulateur sera très lent. Activer « Utiliser l'accélération graphique » dans " +
+    'chrome://settings/system, puis relancer le navigateur. Sur un portable à deux ' +
+    'cartes graphiques, attribuer aussi le navigateur à la carte dédiée : Paramètres ' +
+    'Windows → Système → Écran → Graphiques.';
+
+  const detail = document.createElement('small');
+  detail.textContent = `Moteur détecté : ${renderer}`;
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = '×';
+  close.title = 'Masquer';
+  close.setAttribute('aria-label', "Masquer l'alerte");
+  close.addEventListener('click', () => el?.remove());
+
+  el.append(close, title, fix, detail);
+}
+
 export function flashShutter(): void {
   const el = $('shutter');
   el.classList.remove('fire');

@@ -861,3 +861,48 @@ body {
     max-width: 32vw;
   }
 }
+
+/* ---------- Alerte de rendu logiciel ---------- */
+#gpu-warning {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  width: min(560px, calc(100vw - 32px));
+  padding: 12px 36px 12px 14px;
+  background: rgba(40, 6, 12, 0.94);
+  border: 1px solid var(--bad);
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.5;
+}
+#gpu-warning strong {
+  display: block;
+  color: var(--bad);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+#gpu-warning p {
+  margin: 0 0 6px;
+}
+#gpu-warning small {
+  color: var(--ink-dim);
+  font-size: 10px;
+  word-break: break-word;
+}
+#gpu-warning button {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  background: none;
+  border: none;
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+#gpu-warning button:hover {
+  color: var(--ink);
+}

@@ -16,7 +16,6 @@
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import { CONFIG } from '../core/config';
-import { say } from '../core/bus';
 
 export interface World {
   viewer: Cesium.Viewer;
@@ -25,6 +24,15 @@ export interface World {
   hasExternalTileset: boolean;
   /** Message décrivant le fond réellement utilisé. */
   backendLabel: string;
+  /** Moteur de rendu réellement employé par le navigateur. */
+  gpu: GpuReport;
+}
+
+export interface GpuReport {
+  /** Nom du moteur tel que WebGL le déclare, ou `inconnu`. */
+  renderer: string;
+  /** Vrai si la 3D est calculée par le processeur au lieu de la carte graphique. */
+  software: boolean;
 }
 
 export async function createWorld(
@@ -159,9 +167,9 @@ export async function createWorld(
 
   onProgress('Scène prête', 0.5);
 
-  reportGpu(scene);
+  const gpu = reportGpu(scene);
 
-  return { viewer, scene, hasExternalTileset, backendLabel };
+  return { viewer, scene, hasExternalTileset, backendLabel, gpu };
 }
 
 /**
@@ -172,24 +180,33 @@ export async function createWorld(
  * graphique et calcule la 3D sur le processeur (SwiftShader, llvmpipe...).
  * On obtient alors 5 à 10 images par seconde quoi qu'on optimise — autant le
  * savoir plutôt que d'accuser le code.
+ *
+ * Le verdict est RENVOYÉ, pas affiché ici. Une première version l'émettait sur
+ * le bus d'événements pendant la création de la scène, c'est-à-dire avant que
+ * le moindre panneau n'écoute : l'avertissement se perdait à chaque fois, et
+ * une machine en rendu logiciel tournait au ralenti sans jamais le signaler.
+ * C'est `main.ts` qui l'affiche, une fois l'interface prête.
  */
-function reportGpu(scene: Cesium.Scene): void {
+function reportGpu(scene: Cesium.Scene): GpuReport {
   try {
     // `scene.context` existe à l'exécution mais n'est pas déclaré publiquement.
     const internal = (scene as unknown as { context?: { _gl?: WebGLRenderingContext } }).context;
     const ctx =
       internal?._gl ?? (scene.canvas.getContext('webgl2') as WebGLRenderingContext | null);
-    if (!ctx) return;
+    if (!ctx) return { renderer: 'inconnu', software: false };
 
     const info = ctx.getExtension('WEBGL_debug_renderer_info');
     const renderer = info
       ? String(ctx.getParameter(info.UNMASKED_RENDERER_WEBGL))
       : String(ctx.getParameter(ctx.RENDERER));
 
-    const logiciel = /swiftshader|llvmpipe|software|microsoft basic/i.test(renderer);
+    // « Microsoft Basic Render Driver » est le moteur de secours de Windows
+    // (WARP) : Chrome s'y replie quand son accélération est coupée, ou après
+    // plusieurs plantages de son processus graphique.
+    const software = /swiftshader|llvmpipe|software|microsoft basic/i.test(renderer);
     console.info(`[gpu] moteur de rendu : ${renderer}`);
 
-    if (logiciel) {
+    if (software) {
       console.warn(
         [
           '[gpu] RENDU LOGICIEL DÉTECTÉ — la 3D est calculée par le processeur.',
@@ -198,10 +215,11 @@ function reportGpu(scene: Cesium.Scene): void {
           'Le détail est consultable sur chrome://gpu.',
         ].join('\n'),
       );
-      say("Rendu logiciel détecté — activer l'accélération matérielle", 'err');
     }
+    return { renderer, software };
   } catch {
     // Diagnostic optionnel : son échec ne doit jamais empêcher le démarrage.
+    return { renderer: 'inconnu', software: false };
   }
 }
 

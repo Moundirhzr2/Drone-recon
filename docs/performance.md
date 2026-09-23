@@ -44,10 +44,29 @@ Au démarrage, la console affiche le GPU réellement employé :
 [gpu] moteur de rendu : ANGLE (Intel, Intel(R) UHD Graphics, Direct3D11)
 ```
 
-Si le nom contient `SwiftShader`, `llvmpipe` ou `software`, le navigateur calcule
-la 3D sur le processeur. Aucune optimisation ne compensera : il faut activer
-l'accélération matérielle (`chrome://settings/system`) puis redémarrer le
-navigateur. Le simulateur le signale alors dans le HUD.
+Si le nom contient `SwiftShader`, `llvmpipe`, `software` ou
+`Microsoft Basic Render Driver`, le navigateur calcule la 3D sur le processeur.
+Aucune optimisation ne compensera : il faut activer l'accélération matérielle
+(`chrome://settings/system`) puis redémarrer le navigateur. Le simulateur le
+signale alors par un bandeau rouge en haut de l'écran.
+
+`Microsoft Basic Render Driver` est le moteur de secours de Windows. Chrome s'y
+replie quand son accélération est coupée, mais aussi, sans prévenir, après
+plusieurs plantages de son processus graphique : une machine qui tournait bien la
+veille peut s'y retrouver. Un redémarrage complet de Chrome le remet sur la carte
+graphique.
+
+### Ordinateurs portables à deux cartes graphiques
+
+Beaucoup de portables associent une puce intégrée (Intel, AMD) à une carte dédiée
+(NVIDIA, AMD). Par défaut, Windows attribue le navigateur à la puce intégrée,
+pour économiser la batterie : le simulateur tourne alors sur la moins puissante
+des deux.
+
+Pour l'attribuer à la carte dédiée : **Paramètres Windows → Système → Écran →
+Graphiques**, choisir le navigateur, **Options**, puis **Performances élevées**.
+Redémarrer ensuite complètement le navigateur. La ligne `[gpu]` de la console
+doit alors citer la carte dédiée.
 
 ## Profils
 
