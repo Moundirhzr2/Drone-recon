@@ -1,18 +1,40 @@
 /**
  * Rendu du bâti.
  *
- * Choix de performance : tous les bâtiments partent dans DEUX primitives
- * groupées (volumes pleins / arêtes) plutôt que dans des centaines d'entités.
- * Une entité Cesium, c'est un objet à évaluer à chaque image ; une instance de
- * géométrie dans un `Primitive`, c'est un bloc envoyé une fois au GPU. À ~600
- * instances la différence n'est pas subtile — et on garde malgré tout la
- * possibilité de recolorer un bâtiment isolé via ses attributs d'instance.
+ * CHOIX DE PERFORMANCE
+ * --------------------
+ * Les bâtiments sont regroupés dans des primitives Cesium plutôt que dans des
+ * entités. Une entité est un objet réévalué à chaque image ; une instance de
+ * géométrie dans un `Primitive` est un bloc envoyé une fois au GPU. On garde
+ * malgré tout la possibilité de recolorer un bâtiment isolé, via ses attributs
+ * d'instance.
+ *
+ * DÉCOUPAGE EN CARREAUX
+ * ---------------------
+ * Un effondrement change la géométrie — hauteur écrêtée, gravats — et la seule
+ * façon de le montrer est de reconstruire la primitive qui contient le
+ * bâtiment. Avec la ville générée (76 bâtiments), tout reconstruire coûtait
+ * 20 ms. Avec les 2 282 bâtiments réels, ce serait plusieurs centaines de
+ * millisecondes à chaque dégât.
+ *
+ * La ville est donc découpée en carreaux de 100 m, chacun avec ses propres
+ * primitives. Un dégât ne reconstruit que le carreau touché, et les
+ * reconstructions en attente sont étalées sur plusieurs images (`tick`) : une
+ * explosion qui touche vingt carreaux se voit se propager en quelques dixièmes
+ * de seconde au lieu de figer l'écran.
  */
 
 import * as Cesium from 'cesium';
-import { DAMAGE_INFO, standingHeight, type Building } from './buildings';
+import { DAMAGE_INFO, standingHeight, type Building, type BuildingKind } from './buildings';
 import type { City } from './city';
-import { createFacadeAppearance, SURFACE, texturedBox } from './facade';
+import {
+  createFacadeAppearance,
+  footprintOutline,
+  footprintRoof,
+  footprintWalls,
+  SURFACE,
+  texturedBox,
+} from './facade';
 
 /** Modes de rendu, cyclés par la touche M. */
 export type RenderMode = 'realiste' | 'wireframe' | 'scan';
@@ -25,18 +47,35 @@ export const RENDER_LABEL: Record<RenderMode, string> = {
 
 const DEG = Math.PI / 180;
 
+/** Côté d'un carreau, en mètres. */
+const CHUNK = 100;
+
+/**
+ * Reconstructions permises par image. Un carreau coûte ~3 ms à reconstruire,
+ * puis autant à sa première passe de rendu, où Cesium assemble sa géométrie.
+ * Mesuré sur une GTX 1650 pendant une explosion, deux par image faisaient des
+ * pics de 20 ms ; une seule étale la vague, qui se lit d'ailleurs mieux.
+ */
+const REBUILDS_PER_FRAME = 1;
+
 /** Teintes de façade, par usage. Volontairement désaturées. */
-const WALL_TINTS: Record<Building['kind'], string[]> = {
-  residentiel: ['#b9ac97', '#a89a86', '#c6b9a4', '#9d9484'],
+const WALL_TINTS: Record<BuildingKind, string[]> = {
+  residentiel: ['#b9ac97', '#a89a86', '#c6b9a4', '#9d9484', '#c9bfae'],
   commerce: ['#c2b6a6', '#b0a394', '#bdae9c'],
   bureau: ['#9fa8ad', '#8e979c', '#adb5b9'],
   industriel: ['#8c8e88', '#7d827c', '#9a9c94'],
   civique: ['#c8bda8', '#bdb098', '#d2c8b4'],
+  // Le grès rose des Vosges : c'est celui du temple Saint-Étienne et de la
+  // plupart des édifices anciens de la région.
+  religieux: ['#b98a7a', '#a87c6e'],
+  annexe: ['#8f8a82', '#7f7b74', '#9a958c'],
+  sportif: ['#a3a9ab', '#949a9c'],
 };
 
-const ROOF_TINTS = ['#7a4a3c', '#6b5a52', '#5c5f63', '#8a5443', '#4f5358'];
+const ROOF_TINTS = ['#7a4a3c', '#6b5a52', '#5c5f63', '#8a5443', '#4f5358', '#7c5140'];
 const RUBBLE = '#6b6459';
-const BURNT = '#2b2622';
+/** Maçonnerie noircie ; le shader y ajoute les baies vides et la suie. */
+const BURNT = '#5b534b';
 
 function css(hex: string, alpha = 1): Cesium.Color {
   return Cesium.Color.fromCssColorString(hex).withAlpha(alpha);
@@ -48,8 +87,8 @@ function hashPick(id: string, arr: string[]): string {
   return arr[h % arr.length];
 }
 
-/** Repère local est-nord-haut placé au centre d'une boîte, avec cap. */
-function boxMatrix(lon: number, lat: number, height: number, headingDeg: number): Cesium.Matrix4 {
+/** Repère local est-nord-haut en un point, avec une rotation éventuelle. */
+function localFrame(lon: number, lat: number, height: number, headingDeg = 0): Cesium.Matrix4 {
   const origin = Cesium.Cartesian3.fromDegrees(lon, lat, height);
   const frame = Cesium.Transforms.eastNorthUpToFixedFrame(origin);
   if (!headingDeg) return frame;
@@ -57,197 +96,162 @@ function boxMatrix(lon: number, lat: number, height: number, headingDeg: number)
   return Cesium.Matrix4.multiplyByMatrix3(frame, rot, new Cesium.Matrix4());
 }
 
+/** Un morceau dessinable d'un bâtiment. */
 interface Part {
   id: string;
-  matrix: Cesium.Matrix4;
-  dims: Cesium.Cartesian3;
-  color: Cesium.Color;
-  /** Style de surface, voir `SURFACE`. */
-  style: number;
-  /** Largeur de reference, en metres, pour espacer les travees. */
-  bay: number;
+  solid: Cesium.GeometryInstance;
+  /** Arêtes pour les vues techniques ; absentes pour les gravats. */
+  edge?: Cesium.GeometryInstance;
+  base: Cesium.Color;
 }
 
-/** Décompose un bâtiment en morceaux dessinables, dommages compris. */
-function partsOf(b: Building): Part[] {
-  const parts: Part[] = [];
-  const h = standingHeight(b);
-  const burnt = b.state === 'burnt';
-  const ruined = b.state === 'collapsed' || b.state === 'partial';
+/**
+ * Signature géométrique d'un bâtiment : si elle change, son carreau doit être
+ * reconstruit. La couleur n'en fait pas partie, elle se change à chaud.
+ */
+function signature(b: Building): string {
+  return `${b.state}|${Math.round(b.damage * 20)}|${b.debris.length}`;
+}
 
-  let wall = hashPick(b.id, WALL_TINTS[b.kind]);
-  if (burnt) wall = BURNT;
-  else if (b.state === 'collapsed') wall = RUBBLE;
-  else if (b.state === 'partial') wall = '#8f8577';
-
-  // Corps principal. Un batiment eventre n'a plus de trame de fenetres
-  // lisible : on lui donne la surface d'une ruine, pas celle d'une facade.
-  parts.push({
-    id: `${b.id}:body`,
-    matrix: boxMatrix(b.lon, b.lat, b.baseHeight + h / 2, b.heading),
-    dims: new Cesium.Cartesian3(b.width, b.depth, h),
-    color: css(wall),
-    style: ruined || burnt ? SURFACE.rubble : SURFACE.facade,
-    bay: (b.width + b.depth) / 2,
-  });
-
-  // Toiture : légèrement débordante, elle donne l'échelle vue du ciel.
-  // Un bâtiment effondré n'a plus de toit lisible.
-  if (!ruined) {
-    parts.push({
-      id: `${b.id}:roof`,
-      matrix: boxMatrix(b.lon, b.lat, b.baseHeight + h + 0.55, b.heading),
-      dims: new Cesium.Cartesian3(b.width + 1.4, b.depth + 1.4, 1.1),
-      color: css(burnt ? '#1c1916' : hashPick(b.id + 'r', ROOF_TINTS)),
-      style: SURFACE.roof,
-      bay: b.depth + 1.4,
-    });
-  }
-
-  // Gravats projetés au sol.
-  b.debris.forEach((d, i) => {
-    const mLat = d.dy / 111320;
-    const mLon = d.dx / (111320 * Math.cos(b.lat * DEG));
-    parts.push({
-      id: `${b.id}:debris${i}`,
-      matrix: boxMatrix(b.lon + mLon, b.lat + mLat, b.baseHeight + d.height / 2, d.rot),
-      dims: new Cesium.Cartesian3(d.size, d.size * 0.7, d.height),
-      color: css(burnt ? '#211d1a' : RUBBLE),
-      style: SURFACE.rubble,
-      bay: d.size,
-    });
-  });
-
-  return parts;
+interface Chunk {
+  key: string;
+  buildings: Building[];
+  solid: Cesium.Primitive | null;
+  edges: Cesium.Primitive | null;
+  /** Morceaux de chaque bâtiment, par identifiant. */
+  parts: Map<string, string[]>;
+  base: Map<string, Cesium.Color>;
+  signatures: Map<string, string>;
+  /** Centre du carreau, pour reconstruire d'abord ce qui est près de la caméra. */
+  center: Cesium.Cartesian3;
+  dirty: boolean;
+  repaint: boolean;
 }
 
 export class BuildingRenderer {
-  private solid: Cesium.Primitive | null = null;
-  private edges: Cesium.Primitive | null = null;
+  private chunks = new Map<string, Chunk>();
+  private chunkOf = new Map<string, Chunk>();
   private mode: RenderMode = 'realiste';
   private diagnostic = false;
-  /**
-   * Des couleurs sont en attente d'application.
-   *
-   * Un `Primitive` ne compile sa géométrie qu'à sa PREMIÈRE passe de rendu :
-   * avant cela, `getGeometryInstanceAttributes` lève une exception. On ne peut
-   * donc pas colorer à la construction — il faut attendre que le primitive
-   * concerné soit prêt, d'où ce drapeau consommé par `tick()`.
-   */
-  private dirty = true;
-  /** Couleur « brute » de chaque morceau, pour pouvoir revenir en arrière. */
-  private baseColors = new Map<string, Cesium.Color>();
-  /** Style et métriques de surface d'origine, mêmes usages que `baseColors`. */
-  private baseSurface = new Map<string, [number, number, number]>();
-  /** Morceaux appartenant à chaque bâtiment. */
-  private partsByBuilding = new Map<string, string[]>();
+  private appearance = createFacadeAppearance();
 
   constructor(
     private scene: Cesium.Scene,
-    private city: City,
-  ) {}
-
-  /** (Re)construit toute la géométrie. À rappeler après un désastre. */
-  build(): void {
-    this.dispose();
-    this.baseColors.clear();
-    this.baseSurface.clear();
-    this.partsByBuilding.clear();
-
-    const solidInstances: Cesium.GeometryInstance[] = [];
-    const edgeInstances: Cesium.GeometryInstance[] = [];
-
-    for (const b of this.city.buildings) {
-      const ids: string[] = [];
-      for (const p of partsOf(b)) {
-        ids.push(p.id);
-        this.baseColors.set(p.id, p.color);
-        this.baseSurface.set(p.id, [p.style, p.bay, p.dims.z]);
-
-        solidInstances.push(
-          new Cesium.GeometryInstance({
-            id: p.id,
-            geometry: texturedBox(p.dims, p.style, p.bay, p.dims.z),
-            modelMatrix: p.matrix,
-            attributes: {
-              color: Cesium.ColorGeometryInstanceAttribute.fromColor(p.color),
-            },
-          }),
-        );
-
-        // Les gravats n'ont pas d'arête utile : on allège le fil de fer.
-        if (p.id.includes(':debris')) continue;
-        edgeInstances.push(
-          new Cesium.GeometryInstance({
-            id: p.id,
-            geometry: Cesium.BoxOutlineGeometry.fromDimensions({ dimensions: p.dims }),
-            modelMatrix: p.matrix,
-            attributes: {
-              color: Cesium.ColorGeometryInstanceAttribute.fromColor(Cesium.Color.CYAN),
-            },
-          }),
-        );
+    city: City,
+  ) {
+    const mLon = 111320 * Math.cos((city.center.lat * Math.PI) / 180);
+    for (const b of city.buildings) {
+      const east = (b.lon - city.center.lon) * mLon;
+      const north = (b.lat - city.center.lat) * 111320;
+      const key = `${Math.floor(east / CHUNK)}:${Math.floor(north / CHUNK)}`;
+      let chunk = this.chunks.get(key);
+      if (!chunk) {
+        const [cx, cy] = key.split(':').map(Number);
+        chunk = {
+          key,
+          buildings: [],
+          solid: null,
+          edges: null,
+          parts: new Map(),
+          base: new Map(),
+          signatures: new Map(),
+          center: Cesium.Cartesian3.fromDegrees(
+            city.center.lon + ((cx + 0.5) * CHUNK) / mLon,
+            city.center.lat + ((cy + 0.5) * CHUNK) / 111320,
+            b.baseHeight,
+          ),
+          dirty: true,
+          repaint: false,
+        };
+        this.chunks.set(key, chunk);
       }
-      this.partsByBuilding.set(b.id, ids);
+      chunk.buildings.push(b);
+      this.chunkOf.set(b.id, chunk);
     }
+  }
 
-    this.solid = new Cesium.Primitive({
-      geometryInstances: solidInstances,
-      appearance: createFacadeAppearance(),
-      asynchronous: false,
-      releaseGeometryInstances: false,
-    });
-
-    this.edges = new Cesium.Primitive({
-      geometryInstances: edgeInstances,
-      appearance: new Cesium.PerInstanceColorAppearance({ flat: true, translucent: false }),
-      asynchronous: false,
-      releaseGeometryInstances: false,
-    });
-    this.edges.show = false;
-
-    this.scene.primitives.add(this.solid);
-    this.scene.primitives.add(this.edges);
-    this.dirty = true;
+  /** Nombre de carreaux, et combien attendent une reconstruction. */
+  get stats(): { chunks: number; pending: number } {
+    let pending = 0;
+    for (const c of this.chunks.values()) if (c.dirty) pending++;
+    return { chunks: this.chunks.size, pending };
   }
 
   /**
-   * À appeler une fois par image, après le rendu.
-   * Applique les couleurs en attente dès que le primitive visible est compilé.
+   * Construit toute la ville d'un coup. Réservé au démarrage : ensuite, les
+   * changements passent par `sync` et sont étalés par `tick`.
+   */
+  build(): void {
+    for (const chunk of this.chunks.values()) this.rebuild(chunk);
+  }
+
+  /**
+   * Repère les bâtiments dont la géométrie a changé et marque leurs carreaux.
+   * À appeler quand le simulateur de désastres a modifié des états.
+   */
+  sync(): void {
+    for (const chunk of this.chunks.values()) {
+      if (chunk.dirty) continue;
+      for (const b of chunk.buildings) {
+        if (chunk.signatures.get(b.id) !== signature(b)) {
+          chunk.dirty = true;
+          break;
+        }
+      }
+    }
+  }
+
+  /**
+   * À appeler une fois par image, après le rendu : reconstruit quelques
+   * carreaux en attente, les plus proches de la caméra d'abord, et applique les
+   * couleurs en attente.
    */
   tick(): void {
-    if (!this.dirty) return;
-    const target = this.mode === 'realiste' ? this.solid : this.edges;
-    if (!target || !target.ready) return;
-    this.applyColors();
-    this.dirty = false;
+    const pending = [...this.chunks.values()].filter((c) => c.dirty);
+    if (pending.length) {
+      const eye = this.scene.camera.positionWC;
+      pending.sort(
+        (a, b) =>
+          Cesium.Cartesian3.distanceSquared(a.center, eye) -
+          Cesium.Cartesian3.distanceSquared(b.center, eye),
+      );
+      for (const chunk of pending.slice(0, REBUILDS_PER_FRAME)) this.rebuild(chunk);
+    }
+
+    for (const chunk of this.chunks.values()) {
+      if (!chunk.repaint) continue;
+      const target = this.mode === 'realiste' ? chunk.solid : chunk.edges;
+      if (!target || !target.ready) continue;
+      for (const b of chunk.buildings) {
+        for (const pid of chunk.parts.get(b.id) ?? []) this.paint(chunk, pid, b);
+      }
+      chunk.repaint = false;
+    }
   }
 
   dispose(): void {
-    if (this.solid) this.scene.primitives.remove(this.solid);
-    if (this.edges) this.scene.primitives.remove(this.edges);
-    this.solid = null;
-    this.edges = null;
+    for (const chunk of this.chunks.values()) this.drop(chunk);
   }
 
   setRenderMode(mode: RenderMode): void {
     this.mode = mode;
     const globe = this.scene.globe;
-    // En mode Google 3D Tiles il n'y a pas de couche d'imagerie, et
-    // `skyAtmosphere` peut être absent selon la configuration de la scène.
-    const base = this.scene.imageryLayers.get(0);
     const sky = this.scene.skyAtmosphere;
     const scan = mode === 'scan';
 
     // Relevé technique : plus d'imagerie, un sol neutre, du volume en moins.
-    if (base) base.show = !scan;
+    for (let i = 0; i < this.scene.imageryLayers.length; i++) {
+      this.scene.imageryLayers.get(i).show = !scan;
+    }
     if (sky) sky.show = !scan;
     globe.baseColor = Cesium.Color.fromCssColorString(scan ? '#04080c' : '#1b2a1f');
     this.scene.fog.density = scan ? 0.0004 : 0.00012;
 
-    if (this.solid) this.solid.show = mode === 'realiste';
-    if (this.edges) this.edges.show = mode !== 'realiste';
-    this.dirty = true;
+    for (const chunk of this.chunks.values()) {
+      if (chunk.solid) chunk.solid.show = mode === 'realiste';
+      if (chunk.edges) chunk.edges.show = mode !== 'realiste';
+      chunk.repaint = true;
+    }
   }
 
   getRenderMode(): RenderMode {
@@ -256,31 +260,182 @@ export class BuildingRenderer {
 
   setDiagnostic(on: boolean): void {
     this.diagnostic = on;
-    this.dirty = true;
+    for (const chunk of this.chunks.values()) chunk.repaint = true;
   }
 
-  /** Recolore un seul bâtiment — utilisé quand le simulateur le détruit. */
-  refreshBuilding(id: string): void {
-    const ids = this.partsByBuilding.get(id);
-    if (!ids) return;
-    const b = this.city.buildings.find((x) => x.id === id);
-    if (!b) return;
-    const target = this.mode === 'realiste' ? this.solid : this.edges;
-    if (!target?.ready) {
-      this.dirty = true;
-      return;
+  // ------------------------------------------------------------------------
+  // Construction d'un carreau
+  // ------------------------------------------------------------------------
+
+  private rebuild(chunk: Chunk): void {
+    const solids: Cesium.GeometryInstance[] = [];
+    const edges: Cesium.GeometryInstance[] = [];
+    chunk.parts.clear();
+    chunk.base.clear();
+
+    for (const b of chunk.buildings) {
+      const ids: string[] = [];
+      for (const part of this.partsOf(b)) {
+        ids.push(part.id);
+        chunk.base.set(part.id, part.base);
+        solids.push(part.solid);
+        if (part.edge) edges.push(part.edge);
+      }
+      chunk.parts.set(b.id, ids);
+      chunk.signatures.set(b.id, signature(b));
     }
-    for (const pid of ids) this.paint(pid, b);
+
+    // L'ancien carreau reste affiché jusqu'ici : le nouveau est construit au
+    // rendu suivant, de manière synchrone, donc sans image vide entre les deux.
+    this.drop(chunk);
+
+    chunk.solid = new Cesium.Primitive({
+      geometryInstances: solids,
+      appearance: this.appearance,
+      asynchronous: false,
+      releaseGeometryInstances: false,
+      // Les ombres portées ne coûtent que si le profil de rendu les active.
+      shadows: Cesium.ShadowMode.ENABLED,
+    });
+    chunk.edges = new Cesium.Primitive({
+      geometryInstances: edges,
+      appearance: new Cesium.PerInstanceColorAppearance({ flat: true, translucent: false }),
+      asynchronous: false,
+      releaseGeometryInstances: false,
+    });
+    chunk.solid.show = this.mode === 'realiste';
+    chunk.edges.show = this.mode !== 'realiste';
+
+    this.scene.primitives.add(chunk.solid);
+    this.scene.primitives.add(chunk.edges);
+    chunk.dirty = false;
+    chunk.repaint = false;
   }
 
-  private applyColors(): void {
-    if (!this.solid || !this.edges) return;
-    for (const b of this.city.buildings) {
-      const ids = this.partsByBuilding.get(b.id);
-      if (!ids) continue;
-      for (const pid of ids) this.paint(pid, b);
-    }
+  private drop(chunk: Chunk): void {
+    if (chunk.solid) this.scene.primitives.remove(chunk.solid);
+    if (chunk.edges) this.scene.primitives.remove(chunk.edges);
+    chunk.solid = null;
+    chunk.edges = null;
   }
+
+  /** Décompose un bâtiment en morceaux dessinables, dommages compris. */
+  private partsOf(b: Building): Part[] {
+    const parts: Part[] = [];
+    const h = standingHeight(b);
+    const burnt = b.state === 'burnt';
+    const ruined = b.state === 'collapsed' || b.state === 'partial';
+
+    let wall = hashPick(b.id, WALL_TINTS[b.kind]);
+    if (burnt) wall = BURNT;
+    else if (b.state === 'collapsed') wall = RUBBLE;
+    else if (b.state === 'partial') wall = '#8f8577';
+    const roof = burnt ? '#1c1916' : ruined ? RUBBLE : hashPick(b.id + 'r', ROOF_TINTS);
+
+    // Un bâtiment éventré n'a plus de trame de fenêtres lisible : on lui donne
+    // la surface d'une ruine, pas celle d'une façade. Un bâtiment incendié, lui,
+    // garde ses murs : ce sont ses baies vides et noircies qui le signalent.
+    const wallStyle = burnt ? SURFACE.charred : ruined ? SURFACE.rubble : SURFACE.facade;
+    const roofStyle = ruined || burnt ? SURFACE.rubble : SURFACE.roof;
+
+    if (b.footprint) {
+      // Bâtiment réel : son contour exact, posé sur son altitude IGN.
+      const frame = localFrame(b.lon, b.lat, b.baseHeight);
+      parts.push(
+        this.part(`${b.id}:body`, b, footprintWalls(b.footprint, h, wallStyle), frame, wall, () =>
+          footprintOutline(b.footprint!, h),
+        ),
+        this.part(`${b.id}:roof`, b, footprintRoof(b.footprint, h, roofStyle), frame, roof),
+      );
+    } else {
+      // Bâtiment généré : une boîte, et une toiture légèrement débordante qui
+      // donne l'échelle vue du ciel.
+      const dims = new Cesium.Cartesian3(b.width, b.depth, h);
+      const bodyFrame = localFrame(b.lon, b.lat, b.baseHeight + h / 2, b.heading);
+      parts.push(
+        this.part(
+          `${b.id}:body`,
+          b,
+          texturedBox(dims, wallStyle, (b.width + b.depth) / 2, h),
+          bodyFrame,
+          wall,
+          () =>
+            Cesium.BoxOutlineGeometry.createGeometry(
+              Cesium.BoxOutlineGeometry.fromDimensions({ dimensions: dims }),
+            )!,
+        ),
+      );
+      if (!ruined) {
+        const roofDims = new Cesium.Cartesian3(b.width + 1.4, b.depth + 1.4, 1.1);
+        parts.push(
+          this.part(
+            `${b.id}:roof`,
+            b,
+            texturedBox(roofDims, SURFACE.roof, b.depth + 1.4, 1.1),
+            localFrame(b.lon, b.lat, b.baseHeight + h + 0.55, b.heading),
+            roof,
+          ),
+        );
+      }
+    }
+
+    // Gravats projetés au sol.
+    b.debris.forEach((d, i) => {
+      const mLat = d.dy / 111320;
+      const mLon = d.dx / (111320 * Math.cos(b.lat * DEG));
+      const dims = new Cesium.Cartesian3(d.size, d.size * 0.7, d.height);
+      parts.push(
+        this.part(
+          `${b.id}:debris${i}`,
+          b,
+          texturedBox(dims, SURFACE.rubble, d.size, d.height),
+          localFrame(b.lon + mLon, b.lat + mLat, b.baseHeight + d.height / 2, d.rot),
+          burnt ? '#211d1a' : RUBBLE,
+        ),
+      );
+    });
+
+    return parts;
+  }
+
+  private part(
+    id: string,
+    b: Building,
+    geometry: Cesium.Geometry,
+    modelMatrix: Cesium.Matrix4,
+    hex: string,
+    outline?: () => Cesium.Geometry,
+  ): Part {
+    const base = css(hex);
+    return {
+      id,
+      base,
+      solid: new Cesium.GeometryInstance({
+        id,
+        geometry,
+        modelMatrix,
+        attributes: {
+          color: Cesium.ColorGeometryInstanceAttribute.fromColor(this.colorFor(b, base, 'solid')),
+        },
+      }),
+      edge: outline
+        ? new Cesium.GeometryInstance({
+            id,
+            geometry: outline(),
+            modelMatrix,
+            attributes: {
+              color: Cesium.ColorGeometryInstanceAttribute.fromColor(
+                this.colorFor(b, base, 'edge'),
+              ),
+            },
+          })
+        : undefined,
+    };
+  }
+
+  // ------------------------------------------------------------------------
+  // Couleurs
+  // ------------------------------------------------------------------------
 
   /**
    * Couleur finale d'un morceau.
@@ -289,42 +444,41 @@ export class BuildingRenderer {
    * la GÉOMÉTRIE (hauteur écrêtée, gravats), pas dans un code couleur. En vue
    * diagnostique on bascule sur la classification. C'est toute la différence
    * entre constater et interpréter.
+   *
+   * Le canal ALPHA porte l'interrupteur de texture du shader de façades : il
+   * est le seul encore modifiable à chaud, `surf` étant figé dans la géométrie.
+   * Le rendu étant opaque, cet alpha n'a aucun autre effet.
    */
-  private paint(pid: string, b: Building): void {
+  private colorFor(b: Building, base: Cesium.Color, target: 'solid' | 'edge'): Cesium.Color {
     // En diagnostic, les bâtiments INTACTS restent neutres. Les peindre en vert
-    // vif noierait les quelques cibles qui comptent sous 130 aplats colorés :
-    // une vue de diagnostic doit faire ressortir l'anomalie, pas la normalité.
+    // vif noierait les quelques cibles qui comptent sous des centaines
+    // d'aplats : une vue de diagnostic doit faire ressortir l'anomalie.
     const classified =
       b.state === 'intact'
-        ? css(this.mode === 'realiste' ? '#6f7a80' : '#2f4a52')
+        ? css(target === 'solid' ? '#6f7a80' : '#2f4a52')
         : css(DAMAGE_INFO[b.state].color);
 
-    const target =
-      this.diagnostic || this.mode === 'scan'
-        ? classified
-        : this.mode === 'wireframe'
-          ? css('#00e5ff')
-          : (this.baseColors.get(pid) ?? Cesium.Color.GRAY);
+    const flat = this.diagnostic || this.mode === 'scan';
+    if (target === 'edge') {
+      return flat ? classified : this.mode === 'wireframe' ? css('#00e5ff') : base;
+    }
+    return (flat ? classified : base).withAlpha(flat ? 0.5 : 1);
+  }
 
-    const prim = this.mode === 'realiste' ? this.solid : this.edges;
+  private paint(chunk: Chunk, pid: string, b: Building): void {
+    const prim = this.mode === 'realiste' ? chunk.solid : chunk.edges;
     if (!prim) return;
+    const base = chunk.base.get(pid) ?? Cesium.Color.GRAY;
     try {
       const attrs = prim.getGeometryInstanceAttributes(pid);
       if (!attrs) return;
-      // La texture doit disparaître en vue diagnostique : une trame de fenêtres
-      // sous un aplat de classification brouillerait la lecture. Le diagnostic
-      // répond « quel est l'état de ce bâtiment », pas « à quoi ressemble-t-il ».
-      //
-      // L'interrupteur voyage dans le canal ALPHA, seul canal encore libre qui
-      // reste modifiable à chaud — l'attribut de surface, lui, est figé dans la
-      // géométrie. Le rendu étant opaque, cet alpha n'a aucun autre effet.
-      const flat = this.diagnostic || this.mode === 'scan';
       attrs.color = Cesium.ColorGeometryInstanceAttribute.toValue(
-        target.withAlpha(flat ? 0.5 : 1),
+        this.colorFor(b, base, this.mode === 'realiste' ? 'solid' : 'edge'),
         attrs.color,
       );
     } catch {
-      // Un morceau sans arêtes (gravats) n'existe pas dans le primitive d'arêtes.
+      // Un morceau sans arêtes (toit, gravats) n'existe pas dans le primitive
+      // d'arêtes.
     }
   }
 }

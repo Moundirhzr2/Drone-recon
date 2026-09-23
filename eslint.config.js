@@ -1,5 +1,6 @@
 // @ts-check
 import js from '@eslint/js';
+import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import prettier from 'eslint-config-prettier';
 
@@ -41,6 +42,13 @@ export default tseslint.config(
       'no-console': ['warn', { allow: ['warn', 'error', 'info'] }],
       'prefer-const': 'error',
     },
+  },
+
+  {
+    // Les scripts de téléchargement des données tournent sous Node, pas dans
+    // le navigateur : `process`, `fetch` et `console` y sont des globales.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: globals.node },
   },
 
   // `prettier` vient en dernier : il désactive les règles de style qui

@@ -45,13 +45,18 @@ export class Drone {
   readonly state: DroneState;
   readonly home: { lon: number; lat: number };
 
-  constructor(private ground: number) {
+  /**
+   * @param groundAt altitude du sol en un point. Avec le relief réel, la
+   *   hauteur au-dessus du sol reste juste quand le drone passe d'un quartier bas
+   *   à un quartier haut.
+   */
+  constructor(private groundAt: (lon: number, lat: number) => number) {
     this.home = { lon: CONFIG.city.lon, lat: CONFIG.city.lat };
     this.state = {
       lon: CONFIG.city.lon,
       lat: CONFIG.city.lat,
       agl: CONFIG.drone.startAltitude,
-      msl: ground + CONFIG.drone.startAltitude,
+      msl: groundAt(CONFIG.city.lon, CONFIG.city.lat) + CONFIG.drone.startAltitude,
       heading: CONFIG.drone.startHeading,
       vEast: 0,
       vNorth: 0,
@@ -69,7 +74,7 @@ export class Drone {
     s.lon = this.home.lon;
     s.lat = this.home.lat;
     s.agl = CONFIG.drone.startAltitude;
-    s.msl = this.ground + s.agl;
+    s.msl = this.groundAt(s.lon, s.lat) + s.agl;
     s.heading = CONFIG.drone.startHeading;
     s.vEast = s.vNorth = s.vUp = 0;
     s.pitch = s.roll = 0;
@@ -134,7 +139,7 @@ export class Drone {
       s.agl = C.maxAGL;
       if (s.vUp > 0) s.vUp = 0;
     }
-    s.msl = this.ground + s.agl;
+    s.msl = this.groundAt(s.lon, s.lat) + s.agl;
 
     // --- Assiette visuelle -------------------------------------------------
     // Un vrai multirotor s'incline dans le sens de son accélération. On reproduit

@@ -3,13 +3,15 @@
  * Tout ce qui se règle sans toucher à la logique est ici.
  */
 
+import type { QualityName } from '../world/quality';
+
 /** Modes de fond de scène, par ordre de coût d'accès. */
 export type WorldBackend = 'offline' | 'ion' | 'google';
 
 export const CONFIG = {
   /**
    * Fond de scène.
-   *  - 'offline' : imagerie OSM raster + terrain ellipsoïdal. Aucune clé, marche tout de suite.
+   *  - 'offline' : photo aérienne IGN et relief IGN livré avec l'application. Aucune clé.
    *  - 'ion'     : terrain mondial Cesium + bâtiments OSM 3D. Demande un token Cesium ion (gratuit).
    *  - 'google'  : 3D Tiles photoréalistes. Demande une clé Google Map Tiles API (facturée).
    *
@@ -19,13 +21,21 @@ export const CONFIG = {
   ionToken: import.meta.env.VITE_CESIUM_ION_TOKEN ?? '',
   googleKey: import.meta.env.VITE_GOOGLE_MAPS_KEY ?? '',
 
-  /** Terrain de jeu : Mulhouse, Place de la Réunion. */
+  /**
+   * Terrain de jeu : Mulhouse, place de la Réunion.
+   *
+   * Ce centre doit coïncider avec celui des données de `public/data/`, produites
+   * par les scripts de `scripts/` : c'est l'origine de leurs coordonnées locales.
+   */
   city: {
     name: 'Mulhouse',
-    lon: 7.3395,
-    lat: 47.7486,
-    /** Altitude du sol en mètres (approximative, la plaine d'Alsace est plate). */
-    groundHeight: 240,
+    lon: 7.3389,
+    lat: 47.7466,
+    /**
+     * Altitude du sol en mètres, utilisée seulement si le relief réel n'a pas pu
+     * être chargé. Le relief IGN va de 235 à 244 m sur la zone.
+     */
+    groundHeight: 239,
     /** Demi-étendue de la zone bâtie, en mètres. */
     extent: 360,
     /** Graine du générateur : changer ce nombre regénère une ville différente. */
@@ -70,26 +80,17 @@ export const CONFIG = {
   /**
    * Compromis qualité / fluidité.
    *
-   * Les valeurs par défaut viennent de mesures, pas d'intuitions :
-   * abaisser la finesse du terrain de 2 à 4 rend ~10 % du temps d'image pour
-   * une différence invisible à l'altitude où vole le drone.
+   * Les réglages de chaque profil (résolution, ombres, anticrénelage, finesse
+   * du sol, brouillard) sont dans `world/quality.ts`, avec la façon dont le
+   * profil est choisi.
    */
   performance: {
     /**
-     * Profil de qualité. 'fluide' par défaut : mieux vaut un survol jouable
-     * qu'une belle image à vingt images par seconde.
+     * Profil de qualité. 'auto' le choisit d'après la carte graphique : une
+     * carte dédiée a droit aux ombres, un circuit intégré passe en 'fluide'.
+     * On peut aussi le forcer depuis l'URL : `?qualite=beau`.
      */
-    profile: 'fluide' as 'fluide' | 'equilibre' | 'beau',
-
-    /**
-     * Échelle de rendu : le levier le plus puissant, et le moins visible.
-     * À 0,75, la scène est rendue avec 44 % de pixels en moins puis agrandie.
-     * Le HUD, lui, reste net — il est en HTML, pas dans la scène 3D.
-     *
-     * Valeur de DÉPART seulement : la résolution s'ajuste ensuite d'elle-même
-     * (voir `adaptiveResolution`).
-     */
-    resolutionScale: 0.75,
+    profile: 'auto' as 'auto' | QualityName,
 
     /**
      * Résolution adaptative.
@@ -97,7 +98,8 @@ export const CONFIG = {
      * La bonne échelle de rendu ne dépend pas du code mais de la machine : un
      * GPU intégré sur un écran 1920×1080 en mise à l'échelle 125 % doit couvrir
      * 2,5 fois plus de pixels qu'un petit panneau de test. Plutôt que d'imposer
-     * une valeur, on vise une cadence et on ajuste la finesse pour la tenir.
+     * une valeur, on vise une cadence et on ajuste la finesse pour la tenir ; à
+     * l'échelle minimale, on coupe ensuite les options les plus coûteuses.
      */
     adaptiveResolution: true,
     /** Cadence visée, en images par seconde. */
@@ -107,28 +109,8 @@ export const CONFIG = {
     maxScale: 1.0,
 
     /**
-     * Finesse du terrain : plus le nombre est BAS, plus c'est détaillé et cher.
-     * 2 = défaut Cesium (exigeant), 4 = équilibré, 10 = fluide.
-     */
-    terrainDetail: 10,
-
-    /** Atmosphère au sol et brouillard. Coûte ~11 % du temps d'image. */
-    atmosphere: false,
-
-    /**
-     * Distance de vue, en mètres. Par défaut Cesium dessine jusqu'à l'horizon
-     * terrestre — des centaines de kilomètres de terrain inutiles pour un drone
-     * qui vole à 150 m.
-     *
-     * À ne pas trop réduire : sous ~15 km, le terrain se coupe net et laisse
-     * apparaître le vide noir au-dessus de l'horizon. Le lointain coûte de
-     * toute façon peu, puisqu'il est rendu très grossièrement.
-     */
-    viewDistance: 22000,
-
-    /**
-     * Test de profondeur contre le terrain. Inutile tant que le sol est plat
-     * (mode hors-ligne) ; indispensable avec un vrai relief (mode ion).
+     * Test de profondeur contre le terrain. Inutile tant que le sol est plat ;
+     * forcé dès que le relief réel est chargé.
      */
     depthTestTerrain: false,
   },

@@ -31,8 +31,8 @@ import {
 } from '../world/fragility';
 import {
   blastIntensity,
-  floodDepth,
   floodIntensity,
+  floodLevel,
   localOffset,
   seismicIntensity,
   type Scenario,
@@ -62,6 +62,12 @@ export interface Timeline {
   summary: Record<DamageState, number>;
   /** Nombre de bâtiments dont l'état a changé. */
   affected: number;
+  /**
+   * Bâtiments en feu : de l'embrasement (`from`) à la ruine calcinée (`to`).
+   * Les événements ne datent que la fin ; les effets visuels ont besoin de
+   * savoir aussi quand les flammes commencent.
+   */
+  fires: Array<{ id: string; from: number; to: number }>;
 }
 
 /** Résultat brut d'un aléa, avant expansion en événements. */
@@ -138,7 +144,11 @@ export function buildTimeline(city: City, scenario: Scenario): Timeline {
     if (state !== before.get(id)?.state) affected++;
   }
 
-  return { scenario, duration: scenario.duration, events, before, summary, affected };
+  const fires = impacts
+    .filter((im) => im.state === 'burnt' && before.get(im.b.id)?.state !== 'burnt')
+    .map((im) => ({ id: im.b.id, from: im.from, to: im.to }));
+
+  return { scenario, duration: scenario.duration, events, before, summary, affected, fires };
 }
 
 // ---------------------------------------------------------------------------
@@ -221,12 +231,23 @@ function blast(city: City, s: Scenario, rnd: () => number): Impact[] {
 }
 
 /**
- * Inondation.
+ * Inondation — modèle « de la baignoire » sur le relief réel.
  *
- * Le niveau monte progressivement, donc chaque bâtiment est réévalué pas à pas
- * jusqu'à ce que l'eau atteigne son seuil. C'est le seul aléa où le TEMPS fait
- * partie de la physique et non de la mise en scène : la même crue, plus lente,
- * produit exactement les mêmes dégâts, simplement plus tard.
+ * La surface de l'eau est PLANE : c'est ce qui distingue une crue de tous les
+ * autres aléas. Elle monte depuis le point le plus bas de la zone, et chaque
+ * bâtiment se retrouve sous une hauteur d'eau égale à la différence entre ce
+ * niveau et l'altitude de son pied, mesurée par l'IGN. Deux bâtiments voisins
+ * peuvent donc avoir des sorts opposés : l'un est dans un creux, l'autre sur
+ * un léger relief.
+ *
+ * C'est le modèle des cartes réglementaires de zones inondables dans leur forme
+ * la plus simple. Sa limite est connue : il ignore la connectivité — un creux
+ * isolé se remplit comme s'il était relié à la rivière — et la dynamique de
+ * l'écoulement. Il reste le bon ordre de grandeur pour une crue lente de
+ * plaine, comme celles de l'Ill.
+ *
+ * C'est aussi le seul aléa où le temps fait partie de la physique : la même
+ * crue, plus lente, produit les mêmes dégâts, simplement plus tard.
  *
  * Plafond à l'effondrement partiel : une crue noie un rez-de-chaussée, ruine
  * des planchers et affouille des fondations, mais n'aplatit pas un immeuble.
@@ -234,13 +255,10 @@ function blast(city: City, s: Scenario, rnd: () => number): Impact[] {
  */
 function flood(city: City, s: Scenario, rnd: () => number): Impact[] {
   const out: Impact[] = [];
-  const rise = s.duration * 0.72; // temps pour atteindre la hauteur maximale
-  const steps = 40;
+  const bottom = floodBottom(city);
+  const steps = 60;
 
   for (const b of city.buildings) {
-    const { east, north } = localOffset(b, city.center.lon, city.center.lat);
-    const dist = Math.hypot(east - s.east, north - s.north);
-
     // Dispersion tirée UNE fois : le bâtiment doit s'aggraver de façon
     // monotone pendant que l'eau monte, pas osciller.
     const disp = dispersion(rnd);
@@ -252,8 +270,7 @@ function flood(city: City, s: Scenario, rnd: () => number): Impact[] {
 
     for (let i = 1; i <= steps; i++) {
       const t = (i / steps) * s.duration;
-      const level = s.magnitude * Math.min(1, t / rise);
-      const depth = floodDepth(dist, level);
+      const depth = floodLevel(s, t, bottom) - b.baseHeight;
       if (depth <= 0) continue;
 
       const stress = floodIntensity(depth) * b.vulnerability * disp;
@@ -282,6 +299,17 @@ function flood(city: City, s: Scenario, rnd: () => number): Impact[] {
 }
 
 /**
+ * Altitude du point le plus bas de la ville, d'où l'eau commence à monter.
+ * Exportée pour que l'effet visuel de la crue parte exactement du même niveau
+ * que la simulation.
+ */
+export function floodBottom(city: City): number {
+  let bottom = Infinity;
+  for (const b of city.buildings) if (b.baseHeight < bottom) bottom = b.baseHeight;
+  return Number.isFinite(bottom) ? bottom : city.ground;
+}
+
+/**
  * Incendie — propagation de proche en proche.
  *
  * Le seul aléa sans champ d'intensité : ce qui brûle dépend de ce qui a déjà
@@ -295,15 +323,23 @@ function flood(city: City, s: Scenario, rnd: () => number): Impact[] {
  *   - la COMBUSTIBILITÉ, où le bâti ancien à charpente bois l'emporte de loin
  *     sur une structure béton récente.
  *
- * Calage mesuré, moyenne sur huit graines, part du bâti détruit :
+ * Calage mesuré sur les 2 282 bâtiments réels, moyenne sur cinq graines, part
+ * du bâti détruit :
  *
- *     vigueur 0,5 ...... 14 %   le feu s'éteint de lui-même
- *     vigueur 1,2 ...... 35 %   une langue nette sous le vent
- *     vigueur 2,0 ...... 54 %   le brasier gagne aussi de flanc
+ *     vigueur 0,5 ......  1 %   le feu s'éteint sur place
+ *     vigueur 1,2 ...... 12 %   un grand incendie de quartier
+ *     vigueur 2,0 ...... 48 %   l'embrasement général
+ *
+ * L'écart entre ces trois valeurs n'est pas un défaut de réglage, c'est un
+ * seuil de percolation, propre à tout feu urbain : dans une vieille ville aux
+ * bâtiments mitoyens, en dessous d'une certaine vigueur le feu meurt, au-dessus
+ * il trouve toujours un voisin à allumer. Londres en 1666 en reste l'exemple.
  */
 function wildfire(city: City, s: Scenario, rnd: () => number): Impact[] {
   const STEP = 2; // pas de propagation, en secondes
   const REACH = 52; // portée maximale entre façades, en mètres
+  // Taux de propagation, calé sur la ville réelle (voir l'en-tête).
+  const SPREAD = 0.035;
 
   // Direction VERS laquelle le vent pousse (windFrom est la provenance).
   const blow = ((s.windFrom + 180) * Math.PI) / 180;
@@ -338,33 +374,77 @@ function wildfire(city: City, s: Scenario, rnd: () => number): Impact[] {
   }
   seed.ignitedAt = 0;
 
+  // Voisins précalculés une fois pour toutes, grâce à une grille. Comparer
+  // chaque bâtiment à tous les autres à chaque pas coûtait 1,2 s sur les
+  // 2 282 bâtiments de la ville réelle ; chacun n'a en fait qu'une poignée de
+  // voisins à portée.
+  const GRID = 60;
+  const grid = new Map<string, number[]>();
+  const keyOf = (e: number, n: number) => `${Math.floor(e / GRID)}:${Math.floor(n / GRID)}`;
+  cells.forEach((c, i) => {
+    const k = keyOf(c.east, c.north);
+    const list = grid.get(k);
+    if (list) list.push(i);
+    else grid.set(k, [i]);
+  });
+  // Chaque paire n'est cherchée que depuis le PLUS GRAND des deux bâtiments,
+  // avec une portée qui couvre son rayon plus celui de ses voisins courants :
+  // un grand bâtiment trouve tous ses voisins, et un petit n'a pas à chercher
+  // aussi loin que le plus grand bâtiment de la ville. On range ensuite la paire
+  // dans les deux sens.
+  const radii = cells.map((c) => c.radius).sort((a, b) => a - b);
+  const r95 = radii[Math.floor(radii.length * 0.95)] ?? 0;
+  const neighbours: Array<Array<{ j: number; gap: number; ux: number; uy: number }>> = cells.map(
+    () => [],
+  );
+  const paired = new Set<number>();
+  cells.forEach((a, i) => {
+    const reach = Math.ceil((REACH + a.radius + Math.max(a.radius, r95)) / GRID);
+    const cx = Math.floor(a.east / GRID);
+    const cy = Math.floor(a.north / GRID);
+    for (let dx = -reach; dx <= reach; dx++) {
+      for (let dy = -reach; dy <= reach; dy++) {
+        for (const j of grid.get(`${cx + dx}:${cy + dy}`) ?? []) {
+          if (j === i) continue;
+          const key = i < j ? i * cells.length + j : j * cells.length + i;
+          if (paired.has(key)) continue;
+          const b = cells[j];
+          const len = Math.hypot(b.east - a.east, b.north - a.north) || 1;
+          const gap = Math.max(1, len - a.radius - b.radius);
+          if (gap > REACH) continue;
+          paired.add(key);
+          const ux = (b.east - a.east) / len;
+          const uy = (b.north - a.north) / len;
+          neighbours[i].push({ j, gap, ux, uy });
+          neighbours[j].push({ j: i, gap, ux: -ux, uy: -uy });
+        }
+      }
+    }
+  });
+
+  // Le plancher est ce que reçoit un voisin situé À CONTRE-VENT, par
+  // rayonnement seul. Il croît avec la vigueur : un brasier chauffe ses voisins
+  // dans toutes les directions, un feu mou ne part que sous le vent. Sans cette
+  // dépendance, le feu se réduit toujours à la même langue quelle que soit la
+  // vigueur, et le réglage ne sert à rien.
+  const floor = 0.22 + 0.16 * s.magnitude;
+
   for (let t = STEP; t <= s.duration; t += STEP) {
     // On fige la liste des foyers du pas courant : sans cela un bâtiment
     // allumé à ce pas propagerait déjà, et le feu traverserait la ville
     // en une seule itération.
-    const sources = cells.filter((c) => c.ignitedAt >= 0 && t - c.ignitedAt <= 34);
+    const sources: number[] = [];
+    cells.forEach((c, i) => {
+      if (c.ignitedAt >= 0 && t - c.ignitedAt <= 34) sources.push(i);
+    });
 
-    for (const src of sources) {
-      for (const dst of cells) {
+    for (const i of sources) {
+      for (const { j, gap, ux, uy } of neighbours[i]) {
+        const dst = cells[j];
         if (dst.ignitedAt >= 0) continue;
-
-        const dE = dst.east - src.east;
-        const dN = dst.north - src.north;
-        const gap = Math.max(1, Math.hypot(dE, dN) - src.radius - dst.radius);
-        if (gap > REACH) continue;
-
-        const len = Math.hypot(dE, dN) || 1;
-        const align = (dE / len) * blowE + (dN / len) * blowN;
-
-        // Le plancher est ce que reçoit un voisin situé À CONTRE-VENT, par
-        // rayonnement seul. Il croît avec la vigueur : un brasier chauffe ses
-        // voisins dans toutes les directions, un feu mou ne part que sous le
-        // vent. Sans cette dépendance, le feu se réduit toujours à la même
-        // langue quelle que soit la vigueur, et le réglage ne sert à rien.
-        const floor = 0.22 + 0.16 * s.magnitude;
+        const align = ux * blowE + uy * blowN;
         const wind = floor + 1.2 * Math.max(0, align);
-
-        const p = 0.45 * s.magnitude * Math.exp(-gap / 16) * wind * dst.fuel;
+        const p = SPREAD * s.magnitude * Math.exp(-gap / 16) * wind * dst.fuel;
         if (rnd() < p * (STEP / 2)) dst.ignitedAt = t;
       }
     }
@@ -409,6 +489,14 @@ export class DisasterPlayer {
   playing = false;
   /** Multiplicateur de vitesse de lecture. */
   speed = 1;
+  /**
+   * Événements appliqués par le dernier déplacement vers l'avant, et l'écart
+   * de temps qu'il a couvert. Les effets ponctuels (poussière d'un
+   * effondrement) s'en servent ; un saut de plusieurs secondes — « Après » —
+   * ne doit pas déclencher des centaines de nuages à la fois.
+   */
+  recent: DamageEvent[] = [];
+  recentSpan = 0;
 
   constructor(private city: City) {}
 
@@ -449,6 +537,11 @@ export class DisasterPlayer {
    * @returns vrai si la géométrie doit être reconstruite.
    */
   update(dt: number): boolean {
+    // Ce qui était « récent » à l'image précédente ne l'est plus : sans cette
+    // remise à zéro, une pause laisserait croire aux effets que les mêmes
+    // bâtiments s'effondrent à chaque image.
+    this.recent = [];
+    this.recentSpan = 0;
     if (!this.timeline || !this.playing) return false;
     const end = this.timeline.duration;
     if (this.cursor >= end) {
@@ -467,6 +560,8 @@ export class DisasterPlayer {
     if (!tl) return false;
 
     const target = Math.max(0, Math.min(t, tl.duration));
+    this.recent = [];
+    this.recentSpan = target - this.cursor;
     // Reculer impose de repartir de l'état initial : les événements ne sont
     // pas réversibles un par un (un bâtiment effondré ne se souvient pas de sa
     // fissure précédente). Rejouer depuis zéro reste instantané.
@@ -481,6 +576,7 @@ export class DisasterPlayer {
       const e = tl.events[this.applied];
       const b = this.city.buildings.find((x) => x.id === e.id);
       if (b) setDamage(b, e.state, e.damage, this.rnd);
+      if (this.recentSpan > 0) this.recent.push(e);
       this.applied++;
     }
     return this.applied !== start;

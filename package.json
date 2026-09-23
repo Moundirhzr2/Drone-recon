@@ -36,16 +36,22 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run build"
+    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run build",
+    "data:buildings": "node scripts/fetch-buildings.mjs",
+    "data:relief": "node scripts/fetch-relief.mjs",
+    "data": "npm run data:buildings && npm run data:relief"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.21",
-    "cesium": "^1.132.0"
+    "cesium": "^1.132.0",
+    "earcut": "^3.2.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@types/earcut": "^3.0.0",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
+    "globals": "^16.5.0",
     "prettier": "^3.6.2",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.70.1",

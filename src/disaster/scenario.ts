@@ -7,8 +7,9 @@
  *   SÉISME      — atténuation lente, toute la ville est touchée, gradient doux.
  *   EXPLOSION   — décroissance très raide, destruction totale sur un rayon
  *                 court, rien au-delà. C'est l'inverse exact du séisme.
- *   INONDATION  — ce n'est pas la distance qui compte mais l'ALTITUDE : deux
- *                 bâtiments voisins peuvent avoir des sorts opposés.
+ *   INONDATION  — ce n'est pas la distance qui compte mais l'ALTITUDE réelle
+ *                 du pied de chaque bâtiment : deux voisins peuvent avoir des
+ *                 sorts opposés.
  *   INCENDIE    — pas de champ du tout : une propagation de proche en proche,
  *                 orientée par le vent. La forme de la zone brûlée dépend de
  *                 l'histoire, pas de la géométrie.
@@ -65,7 +66,7 @@ export const DISASTERS: Record<DisasterKind, DisasterMeta> = {
     min: 5,
     max: 10,
     step: 0.5,
-    blurb: 'Atténuation douce : toute la ville encaisse, le bâti ancien cède en premier.',
+    blurb: 'Toute la ville encaisse, le bâti ancien cède en premier. Référence : Bâle, 1356.',
   },
   explosion: {
     label: 'Explosion',
@@ -77,11 +78,14 @@ export const DISASTERS: Record<DisasterKind, DisasterMeta> = {
   },
   inondation: {
     label: 'Inondation',
-    unit: 'Hauteur d’eau (m)',
-    min: 1,
-    max: 8,
-    step: 0.5,
-    blurb: 'Suit l’altitude, pas la distance. Rarement fatale, largement invalidante.',
+    unit: 'Crue (m)',
+    min: 0.5,
+    max: 6,
+    // Le vieux centre est si plat qu'un quart de mètre fait passer de 5 % à
+    // 19 % de bâtiments les pieds dans l'eau : un pas plus grossier sauterait
+    // les situations intermédiaires.
+    step: 0.25,
+    blurb: 'L’eau monte à niveau plat et remplit d’abord les creux du relief réel.',
   },
   incendie: {
     label: 'Incendie',
@@ -97,12 +101,20 @@ export const DISASTERS: Record<DisasterKind, DisasterMeta> = {
 export function defaultScenario(kind: DisasterKind): Scenario {
   const common = { kind, east: 60, north: 40, windFrom: 225, seed: 7301, duration: 45 };
   switch (kind) {
+    // Intensité VII : l'ordre de grandeur estimé pour Mulhouse lors du séisme
+    // de Bâle de 1356, la référence historique du fossé rhénan. Une estimation
+    // tirée des témoignages de l'époque, pas une mesure.
     case 'seisme':
-      return { ...common, magnitude: 7.5, duration: 30 };
+      return { ...common, magnitude: 7, duration: 30 };
+    // Une tonne : l'ordre de grandeur d'un camion piégé. Six tonnes rasaient la
+    // moitié de la vieille ville, trop pour une mission de reconnaissance.
     case 'explosion':
-      return { ...common, magnitude: 6, duration: 20 };
+      return { ...common, magnitude: 1, duration: 20 };
+    // Trois mètres au-dessus du point le plus bas : 25 % des bâtiments ont les
+    // pieds dans l'eau, dont une soixantaine sous plus d'un mètre. La position
+    // du foyer ne sert pas, c'est le relief qui décide.
     case 'inondation':
-      return { ...common, magnitude: 4, east: -260, north: -190, duration: 60 };
+      return { ...common, magnitude: 3, duration: 60 };
     case 'incendie':
       return { ...common, magnitude: 1.2, east: -150, north: -110, duration: 90 };
   }
@@ -176,18 +188,16 @@ export function blastIntensity(distance: number, tonnesTnt: number): number {
 }
 
 /**
- * Inondation — hauteur d'eau au pied d'un bâtiment.
+ * Inondation — niveau de l'eau à un instant donné, en altitude absolue.
  *
- * Le terrain du simulateur est plat : on lui donne donc une pente synthétique
- * qui s'éloigne du point de crue, pour que l'eau se comporte comme de l'eau et
- * suive une ligne de niveau. Sans cela une inondation ne serait qu'un séisme
- * circulaire de plus.
+ * L'eau monte depuis `bottom`, le point le plus bas de la ville, jusqu'à
+ * `magnitude` mètres au-dessus, qu'elle atteint aux trois quarts de la durée.
+ * Une seule fonction pour la simulation et pour l'effet visuel : la surface
+ * affichée est exactement celle qui fait les dégâts.
  */
-const FLOOD_SLOPE = 0.012; // 1,2 %, pente typique d'une plaine alluviale
-
-export function floodDepth(distance: number, waterLevel: number): number {
-  const groundRise = distance * FLOOD_SLOPE;
-  return Math.max(0, waterLevel - groundRise);
+export function floodLevel(s: Scenario, t: number, bottom: number): number {
+  const rise = s.duration * 0.72;
+  return bottom + s.magnitude * Math.min(1, Math.max(t, 0) / rise);
 }
 
 /**

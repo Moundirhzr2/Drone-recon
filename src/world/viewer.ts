@@ -16,6 +16,7 @@
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import { CONFIG } from '../core/config';
+import { createReliefTerrain, type Relief } from './terrain';
 
 export interface World {
   viewer: Cesium.Viewer;
@@ -38,6 +39,7 @@ export interface GpuReport {
 export async function createWorld(
   container: string,
   onProgress: (msg: string, pct: number) => void,
+  relief: Relief | null = null,
 ): Promise<World> {
   onProgress('Initialisation du moteur 3D…', 0.1);
 
@@ -68,9 +70,16 @@ export async function createWorld(
         alpha: false,
       },
     },
-    // Terrain plat par défaut : la plaine d'Alsace s'en accommode très bien et
-    // cela évite toute dépendance réseau au démarrage.
-    terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+    // Relief réel de l'IGN, livré avec l'application : aucune dépendance réseau
+    // au démarrage. Sans lui, on retombe sur un globe plat.
+    //
+    // Les altitudes de l'IGN sont des altitudes au-dessus du niveau de la mer,
+    // pas des hauteurs au-dessus de l'ellipsoïde WGS84 qu'attend Cesium (l'écart
+    // est d'environ 49 m en Alsace). Ce n'est pas un problème tant que le
+    // terrain, les bâtiments et le drone partagent la même référence — c'est
+    // le cas en mode hors-ligne. Les modes `ion` et `google`, qui apportent leur
+    // propre terrain, n'utilisent pas ce relief.
+    terrainProvider: relief ? createReliefTerrain(relief) : new Cesium.EllipsoidTerrainProvider(),
   });
 
   // On prend la main sur la boucle de rendu (voir l'en-tête du fichier).
@@ -79,62 +88,42 @@ export async function createWorld(
   const scene = viewer.scene;
   const globe = scene.globe;
 
-  // Un profil ne fait que surcharger les réglages fins ci-dessous : on garde
-  // ainsi la possibilité de bricoler un cas particulier sans casser les préréglages.
-  const PROFILES = {
-    fluide: { resolutionScale: 0.75, terrainDetail: 10, atmosphere: false, viewDistance: 22000 },
-    equilibre: { resolutionScale: 1, terrainDetail: 4, atmosphere: true, viewDistance: 20000 },
-    beau: { resolutionScale: 1, terrainDetail: 2, atmosphere: true, viewDistance: 60000 },
-  };
-  const PERF = { ...CONFIG.performance, ...PROFILES[CONFIG.performance.profile] };
+  // Les réglages qui dépendent de la machine — résolution, ombres,
+  // anticrénelage, finesse du sol — sont posés par `quality.ts`, une fois la
+  // carte graphique identifiée.
 
   globe.baseColor = Cesium.Color.fromCssColorString('#1b2a1f');
-  // L'atmosphère AU SOL est un shader coûteux appliqué sur tout le terrain ;
-  // celle du CIEL est une simple coupole, quasi gratuite. On ne coupe que la
-  // première : sans le ciel, l'horizon devient un mur noir.
-  globe.showGroundAtmosphere = PERF.atmosphere;
-  // Avec un terrain ellipsoïdal (sol plat), ce test ne change rien à l'image
-  // mais coûte ~8 % du temps de rendu. Il redevient nécessaire avec du relief.
-  globe.depthTestAgainstTerrain = PERF.depthTestTerrain || CONFIG.backend !== 'offline';
-  globe.maximumScreenSpaceError = PERF.terrainDetail;
+  // Sur un globe plat, ce test ne change rien à l'image et coûte ~8 % du temps
+  // de rendu. Dès qu'il y a un relief, il devient indispensable : sans lui, ce
+  // qui passe sous le sol — la surface d'une inondation dans les quartiers
+  // hauts, par exemple — resterait visible à travers.
+  globe.depthTestAgainstTerrain =
+    CONFIG.performance.depthTestTerrain || CONFIG.backend !== 'offline' || relief !== null;
 
-  // Le brouillard reste actif même sans atmosphère : c'est lui qui masque la
-  // limite de la distance de vue, sans quoi le terrain se couperait net.
+  // Le brouillard fond le lointain dans le ciel, et c'est lui qui borne la
+  // distance de vue : Cesium ne charge ni ne dessine les tuiles entièrement
+  // noyées. Sa densité dépend du profil de qualité.
+  //
+  // On ne raccourcit PAS la distance de vue de la caméra (`frustum.far`) : la
+  // coupole du ciel est à des centaines de kilomètres, elle disparaîtrait, et
+  // l'horizon deviendrait un mur noir.
   scene.fog.enabled = true;
-  scene.fog.density = PERF.atmosphere ? 0.00012 : 0.0004;
   if (scene.skyAtmosphere) scene.skyAtmosphere.show = true;
 
   // Chargement des tuiles : c'est lui qui produit les pires pics (jusqu'à 60 ms
   // sur une image), car le décodage des images se fait sur le thread principal.
-  // Un cache plus grand évite de recharger ce qu'on vient de survoler, et
-  // couper le préchargement des voisines étale la charge dans le temps.
-  globe.tileCacheSize = 600;
+  // Couper le préchargement des voisines étale la charge dans le temps. La
+  // taille du cache dépend du profil de qualité (voir `quality.ts`).
   globe.preloadSiblings = false;
   globe.preloadAncestors = false;
   Cesium.RequestScheduler.throttleRequests = true;
   Cesium.RequestScheduler.maximumRequestsPerServer = 8;
 
-  // Rendre moins de pixels : le gain le plus direct sur une machine modeste.
-  // Ce n'est qu'un point de départ, la boucle principale ajuste ensuite.
-  viewer.resolutionScale = PERF.resolutionScale;
-  viewer.useBrowserRecommendedResolution = true;
-
-  // Borner la distance de vue évite de charger et dessiner des dizaines de
-  // kilomètres de terrain qu'aucun pilote de drone ne regarde.
-  const frustum = scene.camera.frustum as Cesium.PerspectiveFrustum;
-  frustum.far = PERF.viewDistance;
   scene.screenSpaceCameraController.enableCollisionDetection = true;
   // Le pilotage se fait au drone : la souris ne doit pas voler la caméra.
   scene.screenSpaceCameraController.enableInputs = false;
 
-  // Lumière rasante : les volumes se lisent bien mieux qu'en éclairage zénithal.
-  scene.light = new Cesium.DirectionalLight({
-    direction: Cesium.Cartesian3.normalize(
-      new Cesium.Cartesian3(0.35, -0.72, -0.6),
-      new Cesium.Cartesian3(),
-    ),
-    intensity: 2.1,
-  });
+  scene.light = new Cesium.DirectionalLight({ direction: sunDirection(215, 40), intensity: 2.1 });
 
   let hasExternalTileset = false;
   let backendLabel = 'Hors-ligne (imagerie satellite)';
@@ -170,6 +159,36 @@ export async function createWorld(
   const gpu = reportGpu(scene);
 
   return { viewer, scene, hasExternalTileset, backendLabel, gpu };
+}
+
+/**
+ * Direction de la lumière d'un soleil placé à `azimuth` degrés (depuis le
+ * nord, sens horaire) et `elevation` degrés au-dessus de l'horizon, au-dessus
+ * de la ville.
+ *
+ * Cesium attend un vecteur du repère terrestre : on le construit donc dans le
+ * repère local est-nord-haut, puis on l'y convertit. Écrit directement en
+ * coordonnées terrestres, un « soleil » se retrouve à une hauteur qu'on ne
+ * choisit pas — l'ancien réglage tombait à 16° au-dessus de l'horizon, et les
+ * ombres portées noyaient toutes les rues.
+ *
+ * Un après-midi, soleil au sud-ouest à 40° : des ombres assez longues pour
+ * lire les volumes, assez courtes pour laisser voir le sol.
+ */
+function sunDirection(azimuth: number, elevation: number): Cesium.Cartesian3 {
+  const a = Cesium.Math.toRadians(azimuth);
+  const e = Cesium.Math.toRadians(elevation);
+  // Vers le soleil, en est-nord-haut ; la lumière va dans l'autre sens.
+  const toSun = new Cesium.Cartesian3(
+    Math.sin(a) * Math.cos(e),
+    Math.cos(a) * Math.cos(e),
+    Math.sin(e),
+  );
+  const frame = Cesium.Transforms.eastNorthUpToFixedFrame(
+    Cesium.Cartesian3.fromDegrees(CONFIG.city.lon, CONFIG.city.lat),
+  );
+  const world = Cesium.Matrix4.multiplyByPointAsVector(frame, toSun, new Cesium.Cartesian3());
+  return Cesium.Cartesian3.normalize(Cesium.Cartesian3.negate(world, world), world);
 }
 
 /**
@@ -239,24 +258,44 @@ function reportGpu(scene: Cesium.Scene): GpuReport {
 async function addOsmImagery(viewer: Cesium.Viewer): Promise<void> {
   viewer.imageryLayers.removeAll();
 
-  let provider: Cesium.ImageryProvider;
+  // Fond mondial : Esri World Imagery. Attention à l'ordre des axes, {z}/{y}/{x}.
+  let base: Cesium.ImageryProvider;
   try {
-    provider = new Cesium.UrlTemplateImageryProvider({
-      // Esri World Imagery. Attention à l'ordre des axes : {z}/{y}/{x}.
+    base = new Cesium.UrlTemplateImageryProvider({
       url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       maximumLevel: 19,
       credit: new Cesium.Credit('Esri, Maxar, Earthstar Geographics'),
     });
   } catch {
-    provider = new Cesium.OpenStreetMapImageryProvider({
+    base = new Cesium.OpenStreetMapImageryProvider({
       url: 'https://tile.openstreetmap.org/',
       maximumLevel: 19,
     });
   }
+  tone(viewer.imageryLayers.addImageryProvider(base));
 
-  const layer = viewer.imageryLayers.addImageryProvider(provider);
-  // Léger assombrissement : le drone survole une zone sinistrée, et cela fait
-  // ressortir les volumes bâtis par-dessus le sol.
+  // Par-dessus, sur la région : la photo aérienne de l'IGN (BD ORTHO®). Sur une
+  // même tuile, elle est nettement plus précise que l'imagerie mondiale — on y
+  // lit les arêtes des toits et les fenêtres de toit. Elle ne couvre que la
+  // France, d'où le rectangle : on ne lui demande rien au-delà.
+  const { lon, lat } = CONFIG.city;
+  const ign = new Cesium.UrlTemplateImageryProvider({
+    url:
+      'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
+      '&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/jpeg' +
+      '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}',
+    maximumLevel: 20,
+    rectangle: Cesium.Rectangle.fromDegrees(lon - 0.35, lat - 0.25, lon + 0.35, lat + 0.25),
+    credit: new Cesium.Credit('© IGN — BD ORTHO®'),
+  });
+  tone(viewer.imageryLayers.addImageryProvider(ign));
+}
+
+/**
+ * Léger assombrissement : le drone survole une zone sinistrée, et cela fait
+ * ressortir les volumes bâtis par-dessus le sol.
+ */
+function tone(layer: Cesium.ImageryLayer): void {
   layer.brightness = 0.88;
   layer.saturation = 0.9;
   layer.contrast = 1.06;

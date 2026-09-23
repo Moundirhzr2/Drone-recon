@@ -121,7 +121,7 @@ function roofBox(b: Building, g: NadirGeometry) {
     const north = sx * hw * sin + sy * hd * cos;
     const lon = b.lon + east / (111320 * Math.cos((b.lat * Math.PI) / 180));
     const lat = b.lat + north / 111320;
-    const p = projectNadir(g, lon, lat, h);
+    const p = projectNadir(g, lon, lat, b.baseHeight + h);
     minX = Math.min(minX, p.x);
     maxX = Math.max(maxX, p.x);
     minY = Math.min(minY, p.y);

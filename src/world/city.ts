@@ -113,7 +113,24 @@ export interface City {
   buildings: Building[];
   center: { lon: number; lat: number };
   ground: number;
+  /** Mention de la source des bâtiments, quand ils ne sont pas générés. */
+  attribution?: string;
 }
+
+/** Foyer de dégâts initiaux, en mètres depuis le centre-ville. */
+export interface DamageFocus {
+  east: number;
+  north: number;
+  radius: number;
+  intensity: number;
+  fire: boolean;
+}
+
+/** Foyers de la ville générée, calibrés pour ses ~80 bâtiments épars. */
+const GENERATED_FOCI: DamageFocus[] = [
+  { east: 120, north: 90, radius: 185, intensity: 1.45, fire: false },
+  { east: -210, north: -150, radius: 150, intensity: 1.55, fire: true },
+];
 
 /** Convertit une position locale en mètres (est, nord) en coordonnées géographiques. */
 function place(east: number, north: number) {
@@ -294,15 +311,15 @@ export function generateCity(): City {
  * présente. Cela donne aussi au pilote quelque chose à chercher — une zone à
  * retrouver plutôt qu'un semis uniforme.
  */
-function seedInitialDamage(buildings: Building[], rnd: () => number): void {
+export function seedInitialDamage(
+  buildings: Building[],
+  rnd: () => number,
+  foyers: DamageFocus[] = GENERATED_FOCI,
+): void {
   // Intensités calibrées sur la courbe de fragilité : au centre d'un foyer,
   // `intensité × vulnérabilité` doit franchir le seuil d'effondrement (0.52),
   // et retomber sous le seuil de fissuration (0.18) aux trois quarts du rayon.
   // Avec une vulnérabilité moyenne autour de 0,55, il faut viser ~1,4.
-  const foyers = [
-    { east: 120, north: 90, radius: 185, intensity: 1.45, fire: false },
-    { east: -210, north: -150, radius: 150, intensity: 1.55, fire: true },
-  ];
 
   for (const b of buildings) {
     const { dLon, dLat } = metersToDegrees(1, 1, CONFIG.city.lat);

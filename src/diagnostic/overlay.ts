@@ -23,7 +23,19 @@ import { groundDistance } from '../core/math';
 
 const FONT = 'ui-monospace, "Cascadia Mono", Consolas, monospace';
 
-/** Cartouche d'étiquette, dessiné au-dessus d'une boîte. */
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * Cartouche d'étiquette, dessiné au-dessus d'une boîte.
+ *
+ * Avec `placed`, il n'est posé que s'il ne chevauche aucun cartouche déjà
+ * posé, et y est alors ajouté. Renvoie vrai s'il a été dessiné.
+ */
 function label(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -31,19 +43,35 @@ function label(
   y: number,
   color: string,
   size = 10,
-): void {
+  placed?: Rect[],
+): boolean {
   ctx.font = `600 ${size}px ${FONT}`;
   const w = ctx.measureText(text).width + 8;
   const h = size + 6;
   // On garde le cartouche dans le cadre, sinon il se coupe en bord d'image.
   const ly = y - h < 0 ? y + 2 : y - h - 1;
+  if (placed) {
+    const overlaps = placed.some(
+      (r) => x < r.x + r.w + 2 && x + w + 2 > r.x && ly < r.y + r.h + 1 && ly + h + 1 > r.y,
+    );
+    if (overlaps) return false;
+    placed.push({ x, y: ly, w, h });
+  }
   ctx.fillStyle = color;
   ctx.fillRect(x, ly, w, h);
   ctx.fillStyle = '#04070b';
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
   ctx.fillText(text, x + 4, ly + h / 2 + 0.5);
+  return true;
 }
+
+/**
+ * Étiquettes au plus sur la vue principale. Avec les 2 282 bâtiments réels, un
+ * séisme en endommage plus de mille : les étiqueter tous recouvrait l'image
+ * d'une centaine de cartouches superposés, illisibles.
+ */
+const MAX_LABELS = 30;
 
 /** Boîtes et scores sur la vignette nadir. */
 export function drawNadirOverlay(
@@ -141,10 +169,21 @@ export function drawMainOverlay(
 
   const camPos = scene.camera.positionWC;
 
+  // Du plus lointain au plus proche : les boîtes proches sont dessinées en
+  // dernier, donc par-dessus, et ce sont elles qui reçoivent une étiquette
+  // quand la place manque.
+  const nearby: Array<{ b: Building; dist: number }> = [];
   for (const b of buildings) {
     if (!isDamaged(b)) continue;
-    if (groundDistance(droneLon, droneLat, b.lon, b.lat) > CONFIG.detector.range) continue;
+    const dist = groundDistance(droneLon, droneLat, b.lon, b.lat);
+    if (dist <= CONFIG.detector.range) nearby.push({ b, dist });
+  }
+  nearby.sort((a, b) => b.dist - a.dist);
+  const labelled = new Set(nearby.slice(-MAX_LABELS * 3).map((n) => n.b));
+  const placed: Rect[] = [];
+  const labels: Array<{ text: string; x: number; y: number; color: string }> = [];
 
+  for (const { b, dist } of nearby) {
     const h = standingHeight(b);
     const rad = (b.heading * Math.PI) / 180;
     const cos = Math.cos(rad);
@@ -218,9 +257,21 @@ export function drawMainOverlay(
     ctx.fillRect(minX, minY, w, hh);
     ctx.globalAlpha = 1;
 
-    if (w > 40) {
-      const dist = groundDistance(droneLon, droneLat, b.lon, b.lat);
-      label(ctx, `${info.short}  ${b.id}  ${dist.toFixed(0)}m`, minX, minY, info.color, 10);
+    if (w > 40 && labelled.has(b)) {
+      labels.push({
+        text: `${info.short}  ${b.id}  ${dist.toFixed(0)}m`,
+        x: minX,
+        y: minY,
+        color: info.color,
+      });
     }
+  }
+
+  // Les cartouches en dernier, par-dessus toutes les boîtes, du plus proche au
+  // plus lointain : un cartouche qui en chevaucherait un autre est sauté.
+  let count = 0;
+  for (let i = labels.length - 1; i >= 0 && count < MAX_LABELS; i--) {
+    const l = labels[i];
+    if (label(ctx, l.text, l.x, l.y, l.color, 10, placed)) count++;
   }
 }

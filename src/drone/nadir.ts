@@ -27,6 +27,8 @@ export interface NadirGeometry {
   lat: number;
   /** Hauteur de la caméra au-dessus du sol, en mètres. */
   agl: number;
+  /** Altitude de la caméra, en mètres : même référence que les bâtiments. */
+  msl: number;
   /** Cap de l'image : la direction qui pointe vers le haut du cadre. */
   heading: number;
   /** Côté de l'emprise au sol, en mètres. */
@@ -99,7 +101,11 @@ export class NadirView {
     cam.setView({ destination: eye, orientation: { direction, up } });
 
     // --- Passe de rendu ----------------------------------------------------
-    this.scene.render();
+    // Même instant que la dernière image principale. Sans heure fournie, Cesium
+    // prend l'heure système, qui n'est pas celle de l'horloge de la scène : les
+    // systèmes de particules, mis à jour à chaque passe, verraient alors le
+    // temps faire des bonds et émettraient des milliers d'éléments d'un coup.
+    this.scene.render(this.scene.lastRenderTime);
 
     const src = this.scene.canvas;
     const side = Math.min(src.width, src.height);
@@ -130,6 +136,7 @@ export class NadirView {
       lon: s.lon,
       lat: s.lat,
       agl: s.agl,
+      msl: s.msl,
       heading: s.heading,
       footprint,
       fovy,
@@ -155,7 +162,12 @@ export function projectNadir(
   g: NadirGeometry,
   lon: number,
   lat: number,
-  height = 0,
+  /**
+   * Altitude du point projeté, dans la même référence que `g.msl`. Par défaut,
+   * le sol sous la caméra. Une altitude absolue, et non une hauteur au-dessus
+   * du sol, reste juste quand le relief varie entre le drone et le bâtiment.
+   */
+  altitude = g.msl - g.agl,
 ): { x: number; y: number; scale: number } {
   const mPerDegLat = 111320;
   const east = (lon - g.lon) * mPerDegLat * Math.cos(g.lat * DEG);
@@ -169,7 +181,7 @@ export function projectNadir(
   const yImg = east * sin + north * cos;
 
   // Emprise à la hauteur considérée : elle rétrécit quand on s'approche.
-  const distance = Math.max(g.agl - height, 1);
+  const distance = Math.max(g.msl - altitude, 1);
   const halfSpan = distance * Math.tan(g.fovy / 2);
   const pxPerMeter = g.size / 2 / halfSpan;
 

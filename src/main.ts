@@ -19,7 +19,10 @@ import * as Cesium from 'cesium';
 import { CONFIG } from './core/config';
 import { on, emit } from './core/bus';
 import { createWorld } from './world/viewer';
+import { createQuality, QUALITY_LABEL } from './world/quality';
 import { generateCity } from './world/city';
+import { loadRealCity } from './world/realCity';
+import { loadRelief } from './world/terrain';
 import { BuildingRenderer, RENDER_LABEL, type RenderMode } from './world/render';
 import { Drone } from './drone/drone';
 import { DroneModel } from './drone/model';
@@ -31,6 +34,7 @@ import { KeyboardControl } from './input/keyboard';
 import { HandControl } from './input/hands';
 import { DisasterPlayer } from './disaster/timeline';
 import { DisasterPanel } from './hud/disaster';
+import { DisasterEffects } from './effects/disasterEffects';
 import { analyse, type DiagnosticResult } from './diagnostic/detector';
 import { drawMainOverlay, drawNadirOverlay } from './diagnostic/overlay';
 import {
@@ -52,17 +56,28 @@ async function main(): Promise<void> {
   boot.set('Initialisation…', 0.05);
 
   // --- Monde -------------------------------------------------------------
-  const { viewer, scene, backendLabel, gpu } = await createWorld('cesium', boot.set);
+  // Le relief d'abord : la scène en a besoin pour construire son terrain.
+  boot.set('Chargement du relief…', 0.08);
+  const relief = await loadRelief();
+  const { viewer, scene, backendLabel, gpu } = await createWorld('cesium', boot.set, relief);
+  // Qualité d'image choisie d'après la carte graphique, puis tenue en vol.
+  const quality = createQuality(viewer, gpu);
 
-  boot.set('Génération du tissu urbain…', 0.6);
-  const city = generateCity();
+  // Les vrais bâtiments de l'IGN ; la ville générée ne sert plus que de secours
+  // si les données ne sont pas là.
+  boot.set('Chargement des bâtiments réels…', 0.6);
+  const city = (await loadRealCity(relief)) ?? generateCity();
 
   const renderer = new BuildingRenderer(scene, city);
   renderer.build();
   boot.set(`${city.buildings.length} bâtiments construits`, 0.8);
 
   // --- Drone ---------------------------------------------------------------
-  const drone = new Drone(city.ground);
+  // Sa hauteur au-dessus du sol se mesure sur le relief réel quand on l'a.
+  const groundAt = relief
+    ? (lon: number, lat: number) => relief.heightAt(lon, lat)
+    : () => city.ground;
+  const drone = new Drone(groundAt);
   // Le châssis 3D est optionnel : voir CONFIG.drone.showModel.
   const model = CONFIG.drone.showModel ? new DroneModel(viewer, drone.state) : null;
   const camera = new DroneCamera(scene.camera, drone.state);
@@ -80,6 +95,7 @@ async function main(): Promise<void> {
 
   // --- Simulateur de désastres (partie 2) -----------------------------------
   const player = new DisasterPlayer(city);
+  const effects = new DisasterEffects(scene, city, groundAt);
 
   // --- Interface -------------------------------------------------------------
   const gps = new GpsPanel(drone.home);
@@ -102,38 +118,11 @@ async function main(): Promise<void> {
   // --- Reconstruction du bâti après un dommage -------------------------------
   //
   // Un effondrement change la GÉOMÉTRIE — hauteur écrêtée, gravats — et pas
-  // seulement la couleur : il faut reconstruire. La mesure donne 19,7 ms pour
-  // 76 bâtiments, et ce coût est incompressible : créer les 300 boîtes ne
-  // prend que 1,6 ms, tout le reste est la construction de la primitive Cesium
-  // (fusion des instances, sphères englobantes, envoi au GPU).
-  //
-  // Pendant une lecture, les événements arrivent à ~5 par seconde : reconstruire
-  // à chaque fois produisait 44 images au-dessus de 16,7 ms sur 909. On les
-  // regroupe donc par fenêtres de 300 ms. Le retard visuel est imperceptible
-  // sur un sinistre qui dure trente secondes.
-  //
-  // Hors lecture — bouton Avant/Après, curseur, annulation — la reconstruction
-  // reste immédiate : là, c'est la réactivité qui compte.
-  const REBUILD_INTERVAL = 300;
-  let rebuildPending = false;
-  let lastRebuild = 0;
-
-  // `at` doit venir de la MÊME horloge que la comparaison faite dans la boucle.
-  // Mélanger `performance.now()` et l'horodatage de l'image désactive le frein
-  // sans prévenir, puisque les deux bases dérivent l'une par rapport à l'autre.
-  const rebuildCity = (at = performance.now()): void => {
-    rebuildPending = false;
-    lastRebuild = at;
-    renderer.build();
-    renderer.setRenderMode(renderMode);
-    renderer.setDiagnostic(diagnostic);
-  };
-
+  // seulement la couleur. Le renderer repère lui-même les carreaux touchés et
+  // étale leur reconstruction sur les images suivantes (voir `world/render.ts`) :
+  // il suffit de lui signaler qu'un état a changé.
   const disasterPanel = new DisasterPanel(city, player, {
-    onRebuild: () => {
-      if (player.playing) rebuildPending = true;
-      else rebuildCity();
-    },
+    onRebuild: () => renderer.sync(),
   });
   let lastResult: DiagnosticResult = {
     detections: [],
@@ -160,9 +149,14 @@ async function main(): Promise<void> {
     );
   });
 
+  // Fumée, flammes et eau brouilleraient la lecture des vues techniques, qui
+  // ne montrent que la classification des dommages.
+  const syncEffectsVisibility = () => effects.setVisible(renderMode !== 'scan' && !diagnostic);
+
   on('view:toggle-diagnostic', () => {
     diagnostic = !diagnostic;
     renderer.setDiagnostic(diagnostic);
+    syncEffectsVisibility();
     report.setOpen(diagnostic);
     handsPanel.setMessage(diagnostic ? 'Vue diagnostique' : 'Vue brute', 'ok');
   });
@@ -170,6 +164,7 @@ async function main(): Promise<void> {
   on('view:cycle-render', () => {
     renderMode = RENDER_CYCLE[(RENDER_CYCLE.indexOf(renderMode) + 1) % RENDER_CYCLE.length];
     renderer.setRenderMode(renderMode);
+    syncEffectsVisibility();
     handsPanel.setMessage(`Rendu : ${RENDER_LABEL[renderMode]}`, 'ok');
   });
 
@@ -225,7 +220,7 @@ async function main(): Promise<void> {
   camera.snap();
   viewer.resize();
   viewer.render();
-  boot.set(`Prêt — ${backendLabel}`, 1);
+  boot.set(`Prêt — ${backendLabel} — qualité ${QUALITY_LABEL[quality.profile]}`, 1);
   setTimeout(() => boot.hide(), 450);
   handsPanel.setMessage('Prêt au décollage — H pour piloter aux mains', 'ok');
   // Affiché ici et pas pendant la création de la scène : c'est seulement
@@ -239,9 +234,6 @@ async function main(): Promise<void> {
 
   /** Durée d'un pas de simulation, en secondes. */
   const FIXED_STEP = 1 / 120;
-  /** Dernier réglage de la résolution adaptative. */
-  let lastScaleCheck = 0;
-  let scale = viewer.resolutionScale;
   /** Temps écoulé pas encore simulé. */
   let accumulator = 0;
   let lastResize = 0;
@@ -294,9 +286,12 @@ async function main(): Promise<void> {
     camera.update(dt);
 
     // Le simulateur avance en temps simulé, indépendamment du drone : on peut
-    // survoler un sinistre pendant qu'il se produit.
+    // survoler un sinistre pendant qu'il se produit. Les effets visuels suivent
+    // le même temps, et la secousse d'un séisme s'applique à la caméra déjà
+    // placée, juste avant le rendu.
     disasterPanel.update(dt);
-    if (rebuildPending && now - lastRebuild >= REBUILD_INTERVAL) rebuildCity(now);
+    effects.update(player, now);
+    effects.shake(scene.camera, player);
 
     // Vue nadir : seconde passe de rendu, cadencée à part.
     if (nadir.due(now)) {
@@ -324,28 +319,10 @@ async function main(): Promise<void> {
       );
     }
 
-    // --- Résolution adaptative ---------------------------------------------
-    // On ne touche à l'échelle que toutes les deux secondes : la changer
-    // reconstruit les tampons de rendu, ce qui coûte bien plus cher qu'une
-    // image un peu trop fine.
-    if (CONFIG.performance.adaptiveResolution && now - lastScaleCheck > 2000) {
-      lastScaleCheck = now;
-      const target = CONFIG.performance.targetFps;
-      if (fps > 0) {
-        const avant = scale;
-        // Descente franche quand on est loin du compte, remontée prudente :
-        // mieux vaut regagner de la netteté lentement que faire clignoter la
-        // résolution entre deux valeurs.
-        if (fps < target * 0.8) scale = Math.max(CONFIG.performance.minScale, scale - 0.1);
-        else if (fps > target * 1.25) scale = Math.min(CONFIG.performance.maxScale, scale + 0.05);
-        if (scale !== avant) {
-          viewer.resolutionScale = scale;
-          console.info(
-            `[perf] ${Math.round(fps)} img/s — échelle de rendu ${avant.toFixed(2)} -> ${scale.toFixed(2)}`,
-          );
-        }
-      }
-    }
+    // --- Qualité adaptative -------------------------------------------------
+    // Résolution d'abord, puis options coûteuses : voir `world/quality.ts`.
+    const dropped = quality.update(now, fps);
+    if (dropped) handsPanel.setMessage(`Qualité réduite pour rester fluide : ${dropped}`, 'info');
 
     if (now - lastHud > 100) {
       lastHud = now;
@@ -410,6 +387,8 @@ async function main(): Promise<void> {
       },
       player,
       disasterPanel,
+      effects,
+      quality,
       step: (n?: number) => step(n ?? performance.now()),
       get diagnostic() {
         return diagnostic;
