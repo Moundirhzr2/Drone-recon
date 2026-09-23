@@ -5,37 +5,47 @@
 ```
 src/
 ├── core/         configuration, bus d'événements, maths (One Euro, géodésie, PRNG)
-├── world/        scène Cesium, génération de la ville, états de dommage,
-│                 rendu du bâti, textures, courbe de fragilité
+├── world/        scène Cesium, ville réelle (IGN) et ville générée de secours,
+│                 relief, états de dommage, rendu du bâti par carreaux, textures,
+│                 courbe de fragilité, profils de qualité
 ├── drone/        physique de vol, châssis 3D, caméras, vue nadir, photos
 ├── input/        abstraction des commandes, clavier, suivi des mains MediaPipe
 ├── diagnostic/   détecteur de dommages, surcouches, métriques
 ├── disaster/     scénarios, champs d'intensité, chronologie et lecture
+├── effects/      effets visuels des désastres : eau, feu, fumée, explosion
 ├── hud/          panneaux de l'interface et feuille de style
 └── main.ts       assemblage et boucle principale
+
+scripts/          téléchargement des bâtiments et du relief depuis l'IGN
+public/data/      les mêmes, figés et versionnés (voir données)
 ```
 
 Les dépendances vont dans un seul sens : `core` ne dépend de rien, `world` de
-`core`, et les modules de haut niveau (`drone`, `disaster`, `hud`) s'appuient
-sur les précédents. Aucun cycle d'import.
+`core`, et les modules de haut niveau (`drone`, `disaster`, `effects`, `hud`)
+s'appuient sur les précédents. Aucun cycle d'import.
+
+La ville réelle est chargée au démarrage depuis `public/data/` ; si le fichier
+manque, la ville générée prend le relais, et tout le reste fonctionne à
+l'identique. Le détail des données est dans [données](donnees.md).
 
 ## Une image, du début à la fin
 
 La boucle de rendu par défaut de Cesium est désactivée ; `main.ts` pilote chaque
 image dans cet ordre :
 
-| #   | Étape                              | Cadence             | Pourquoi à cette place                                     |
-| --- | ---------------------------------- | ------------------- | ---------------------------------------------------------- |
-| 1   | Redimensionnement du canvas        | ≤ 2 Hz              | `viewer.render()` ne le fait pas lui-même                  |
-| 2   | Physique du drone                  | pas fixe de 1/120 s | indépendante de la cadence d'affichage                     |
-| 3   | Pose du châssis, puis de la caméra | chaque image        | la caméra suit le drone déjà déplacé                       |
-| 4   | Simulateur de désastres            | chaque image        | peut demander une reconstruction du bâti                   |
-| 5   | Vue nadir (seconde passe de rendu) | 4 Hz                | poste le plus coûteux après le rendu principal             |
-| 6   | Rendu principal                    | chaque image        |                                                            |
-| 7   | Couleurs en attente du bâti        | si nécessaire       | une primitive n'accepte ses attributs qu'une fois compilée |
-| 8   | Surcouche de diagnostic            | chaque image        | projetée avec la caméra qui vient de servir au rendu       |
-| 9   | Résolution adaptative              | ≤ 0,5 Hz            | voir [performance](performance.md)                         |
-| 10  | Panneaux du HUD                    | 10 Hz               | réécrire le DOM à 60 Hz coûterait plus que la scène        |
+| #   | Étape                              | Cadence              | Pourquoi à cette place                                      |
+| --- | ---------------------------------- | -------------------- | ----------------------------------------------------------- |
+| 1   | Redimensionnement du canvas        | ≤ 2 Hz               | `viewer.render()` ne le fait pas lui-même                   |
+| 2   | Physique du drone                  | pas fixe de 1/120 s  | indépendante de la cadence d'affichage                      |
+| 3   | Pose du châssis, puis de la caméra | chaque image         | la caméra suit le drone déjà déplacé                        |
+| 4   | Simulateur de désastres            | chaque image         | peut marquer des carreaux du bâti à reconstruire            |
+| 5   | Effets visuels, secousse           | chaque image         | suivent le temps du sinistre ; la secousse, la caméra posée |
+| 6   | Vue nadir (seconde passe de rendu) | 4 Hz                 | poste le plus coûteux après le rendu principal              |
+| 7   | Rendu principal                    | chaque image         |                                                             |
+| 8   | Carreaux et couleurs en attente    | un carreau par image | une primitive n'accepte ses attributs qu'une fois compilée  |
+| 9   | Surcouche de diagnostic            | 8 Hz                 | projetée avec la caméra qui vient de servir au rendu        |
+| 10  | Qualité adaptative                 | ≤ 0,5 Hz             | voir [performance](performance.md#le-régulateur)            |
+| 11  | Panneaux du HUD                    | 10 Hz                | réécrire le DOM à 60 Hz coûterait plus que la scène         |
 
 Le pas fixe de l'étape 2 est ce qui rend le vol fluide : sans lui, une image de
 40 ms ferait bondir le drone de quatre fois la distance d'une image de 10 ms.
@@ -50,7 +60,9 @@ se règle qu'à la création du viewer, et c'est le piège le plus courant du pr
 viewer Cesium, qui doublerait la mémoire GPU et rechargerait toutes les tuiles,
 on pointe la caméra à la verticale, on rend, on copie le carré central, puis on
 remet la caméra. C'est ce qui impose de désactiver la boucle de Cesium : il
-fallait un point d'accroche entre les deux passes.
+fallait un point d'accroche entre les deux passes. La passe nadir rend au même
+instant que la dernière image principale : sans heure fournie, Cesium prendrait
+l'heure système, et les particules verraient le temps faire des bonds.
 
 **Une couche d'abstraction des commandes** (`input/control.ts`). Le drone reçoit
 quatre nombres et ignore d'où ils viennent. On développe au clavier, on démontre
@@ -117,9 +129,15 @@ par usage, états de dommage, et surtout la vue diagnostique qui recolore les
 bâtiments un par un. Le shader garde donc cette couleur et la multiplie par le
 motif.
 
-Trois surfaces sont reconnues — façade, toiture, gravats — et la vue diagnostique
-repasse en aplat, parce qu'une trame de fenêtres sous une couleur de
-classification brouillerait la lecture.
+Quatre surfaces sont reconnues — façade, toiture, gravats et façade incendiée,
+aux baies vides et noircies de suie — et la vue diagnostique repasse en aplat,
+parce qu'une trame de fenêtres sous une couleur de classification brouillerait
+la lecture. Les vitrages reflètent le ciel, plus ou moins clair d'une fenêtre à
+l'autre ; une sur cinq a ses rideaux tirés.
+
+Les bâtiments réels sont extrudés depuis leur contour IGN : un mur par arête, dont
+les coordonnées de texture suivent la longueur réelle, et un toit triangulé par
+[earcut](https://github.com/mapbox/earcut), qui respecte les cours intérieures.
 
 ### Deux contraintes de Cesium à connaître
 
@@ -139,11 +157,13 @@ classification brouillerait la lecture.
 
 ```js
 __sim.drone.state; // position, vitesses, cap, batterie
-__sim.city.buildings; // les 76 bâtiments et leur état réel
+__sim.city.buildings; // les 2 282 bâtiments et leur état réel
 __sim.nadir.geometry; // géométrie de la dernière prise de vue
 __sim.analyse(__sim.city.buildings, __sim.nadir.geometry); // détections et métriques
 __sim.player.current; // chronologie du sinistre chargé
 __sim.gpu; // moteur de rendu réellement utilisé
+__sim.quality.profile; // profil de qualité retenu
+__sim.effects; // effets visuels en cours
 __sim.step(); // avance la simulation d'une image
 ```
 

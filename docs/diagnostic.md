@@ -84,22 +84,24 @@ Par défaut, le simulateur n'a besoin d'aucune clé. Pour changer de fond, copie
 
 | `VITE_WORLD_BACKEND` | Rendu                                            | Clé requise                                                |
 | -------------------- | ------------------------------------------------ | ---------------------------------------------------------- |
-| `offline` _(défaut)_ | ville générée sur imagerie satellite             | aucune                                                     |
+| `offline` _(défaut)_ | ville réelle de l'IGN sur photographie aérienne  | aucune                                                     |
 | `ion`                | terrain mondial et bâtiments OpenStreetMap en 3D | token [Cesium ion](https://ion.cesium.com/tokens), gratuit |
 | `google`             | tuiles photoréalistes                            | clé Google Map Tiles API, **facturée à l'usage**           |
 
-**Le mode `google` ne remplace pas la ville générée.** Son maillage
+**Le mode `google` ne remplace pas les bâtiments de l'IGN.** Son maillage
 photogrammétrique est un seul bloc de géométrie : aucun bâtiment n'y est
 sélectionnable individuellement, donc aucun ne peut être coloré ni effondré. Les
-bâtiments générés restent posés par-dessus ; ce sont eux qui portent les
+bâtiments de l'IGN restent posés par-dessus ; ce sont eux qui portent les
 dommages, le photoréalisme n'est que le décor.
 
-Le mode `offline` utilise l'imagerie Esri World Imagery (crédit : Esri, Maxar,
+Le mode `offline` pose la photographie aérienne de l'IGN (BD ORTHO®) sur la
+région, et l'imagerie mondiale Esri World Imagery au-delà (crédit : Esri, Maxar,
 Earthstar Geographics), avec OpenStreetMap en repli si la source est injoignable.
-C'est adapté à un usage personnel ; un déploiement public demanderait une source
-sous contrat.
+L'imagerie Esri convient à un usage personnel ; un déploiement public
+demanderait une source sous contrat.
 
 Le choix d'un sol photographique n'est pas cosmétique. Avec une carte routière,
 le drone survolerait un plan — rues nommées, bâtiments déjà dessinés en 2D sous
-les volumes 3D. L'imagerie satellite donne un sol sur lequel les bâtiments
-générés viennent se poser, ce qui est la lecture recherchée.
+les volumes 3D. La photographie aérienne donne un sol sur lequel les bâtiments
+viennent se poser — et comme ce sont les vrais, leurs contours tombent sur leurs
+propres toits : le rendu fil de fer le montre.
