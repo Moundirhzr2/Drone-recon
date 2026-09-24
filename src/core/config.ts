@@ -5,21 +5,26 @@
 
 import type { QualityName } from '../world/quality';
 
-/** Modes de fond de scène, par ordre de coût d'accès. */
-export type WorldBackend = 'offline' | 'ion' | 'google';
-
 export const CONFIG = {
   /**
-   * Fond de scène.
-   *  - 'offline' : photo aérienne IGN et relief IGN livré avec l'application. Aucune clé.
-   *  - 'ion'     : terrain mondial Cesium + bâtiments OSM 3D. Demande un token Cesium ion (gratuit).
-   *  - 'google'  : 3D Tiles photoréalistes. Demande une clé Google Map Tiles API (facturée).
-   *
-   * Les clés se mettent dans un fichier .env à la racine (voir .env.example).
+   * Accès à la ville photoréaliste (voir `world/photoreal.ts`) : un jeton
+   * Cesium ion, gratuit, ou une clé Google Map Tiles API, facturée à l'usage.
+   * Sans l'un ni l'autre, la ville est dessinée d'après l'IGN : aucune clé
+   * n'est nécessaire. Ils se mettent dans `.env.local` (voir `.env.example`).
    */
-  backend: (import.meta.env.VITE_WORLD_BACKEND ?? 'offline') as WorldBackend,
   ionToken: import.meta.env.VITE_CESIUM_ION_TOKEN ?? '',
   googleKey: import.meta.env.VITE_GOOGLE_MAPS_KEY ?? '',
+
+  photoreal: {
+    /**
+     * Écart entre les altitudes de l'IGN (au-dessus du niveau de la mer) et
+     * les hauteurs de Google (au-dessus de l'ellipsoïde) : l'ondulation du
+     * géoïde. Mesurée au centre de Mulhouse sur 49 points au sol, en
+     * comparant le relevé de Google au relief RGE ALTI® : les points de
+     * chaussée se regroupent entre 47,9 et 48,9 m.
+     */
+    geoidOffset: 48.2,
+  },
 
   /**
    * Terrain de jeu : Mulhouse, place de la Réunion.

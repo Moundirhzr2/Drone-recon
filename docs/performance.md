@@ -20,17 +20,24 @@ les valeurs absolues.
 | Vue nadir                            | passe de rendu complète, ~6 ms                   | ramenée à 4 rafraîchissements par seconde        |
 | Particules d'une explosion           | jusqu'à 110 ms par image                         | trois pièges de Cesium contournés : 16 à 18 ms   |
 | Cache de tuiles                      | plus de 20 000 requêtes sur une vue immobile     | dimensionné par profil : 163 requêtes            |
+| Découpes du relevé (ville réelle)    | 12 ms de processeur par image : 30 images/s      | carte des ruines lue par un shader : 58 images/s |
+| Globe de l'IGN sous le relevé        | 6 ms par image, pour les seules découpes         | masqué, une nappe en tient lieu : 19,5 → 13 ms   |
+| Murs mitoyens d'une ruine            | jusqu'à 100 ms pour une seule ruine              | côtés voisins filtrés : 3,3 ms au plus           |
 
 ## Profils de qualité
 
 Le profil est choisi au démarrage d'après la carte graphique que déclare le
 navigateur (`world/quality.ts`) :
 
-| Profil      | Pour                                        | Définition          | Sol | Anticrénelage |
-| ----------- | ------------------------------------------- | ------------------- | --- | ------------- |
-| `fluide`    | circuits intégrés, rendu logiciel           | 75 % des points CSS | 6   | non           |
-| `equilibre` | cartes dédiées d'entrée de gamme (GTX 16xx) | points CSS          | 4   | FXAA          |
-| `beau`      | cartes récentes (RTX, RX 6000 et plus)      | points physiques    | 2   | MSAA × 4      |
+| Profil      | Pour                                        | Définition          | Sol | Relevé | Anticrénelage |
+| ----------- | ------------------------------------------- | ------------------- | --- | ------ | ------------- |
+| `fluide`    | circuits intégrés, rendu logiciel           | 75 % des points CSS | 6   | 32     | non           |
+| `equilibre` | cartes dédiées d'entrée de gamme (GTX 16xx) | points CSS          | 4   | 24     | FXAA          |
+| `beau`      | cartes récentes (RTX, RX 6000 et plus)      | points physiques    | 2   | 12     | MSAA × 4      |
+
+« Sol » et « Relevé » sont des finesses : l'erreur tolérée à l'écran, en pixels,
+pour le relief et pour la ville photoréaliste. Plus le nombre est bas, plus
+c'est net.
 
 Les deux profils riches ajoutent la brume au sol et un brouillard plus léger,
 qui recule l'horizon. Pour imposer un profil : `?qualite=fluide`,
@@ -242,6 +249,82 @@ les sommets restent à quelques mètres de l'origine **locale**, et c'est la
 `modelMatrix`, en double précision côté processeur, qui porte les 6 366 km
 jusqu'au centre de la Terre.
 
+Le châssis est depuis devenu un vrai modèle glTF — 10 912 triangles, huit
+matériaux, quatre hélices animées par la matrice de leur nœud. Le principe
+reste le même : rien n'est reconstruit par image. Son coût n'a pas été remesuré.
+
+## La ville photoréaliste
+
+Le relevé de Google est de loin le poste le plus coûteux. Image complète sur la
+GTX 1650 Max-Q, carte graphique attendue à chaque image (`gl.finish`), devant le
+temple Saint-Étienne, tuiles chargées :
+
+| Finesse du relevé           | Tuiles dessinées | Image médiane | 90ᵉ centile |
+| --------------------------- | ---------------- | ------------- | ----------- |
+| 16, sans nadir              | 265              | 28,4 ms       | 39,7 ms     |
+| 24, sans nadir              | 174              | 15,7 ms       | 18,8 ms     |
+| 32, sans nadir              | 149              | 13,7 ms       | 15 ms       |
+| 24, nadir en finesse moitié | 225              | 21,4 ms       | 30 ms       |
+| ville dessinée, avec nadir  | —                | 14,2 ms       | 28 ms       |
+
+La ligne « nadir en finesse moitié » est mesurée à pleine définition
+(1 522 × 736), les autres à 90 % (1 369 × 612). À l'altitude d'un drone, les
+finesses 16 et 24 se distinguent à peine : le profil équilibré prend 24.
+
+**La vue nadir en finesse moitié.** Elle ne fait que quelques centaines de
+pixels à l'écran, mais elle est rendue à la taille de la fenêtre : à pleine
+finesse, chacun de ses rafraîchissements coûtait une seconde image entière, et
+faisait charger toutes les tuiles sous le drone. Elle est désormais rendue avec
+une erreur tolérée double (`PhotorealCity.coarser`). Avec les deux réglages,
+l'image médiane est passée de 42,5 ms à 21,4 ms.
+
+**La mémoire.** Par défaut, Cesium garde 1,5 Go de tuiles, plus 1 Go de
+débordement : trop pour une carte de 4 Go qui dessine aussi le reste. Le cache
+est dimensionné par profil (256, 512, 1 024 Mo). En vol, sur la GTX 1650, les
+tuiles ont plafonné vers 700 Mo avec l'ancien réglage de 768 Mo, et la mémoire
+JavaScript de la page a oscillé entre 380 et 550 Mo.
+
+Ces mesures forcent la carte graphique à finir chaque image avant la suivante.
+Elles comparent bien les réglages entre eux, mais elles ont manqué le vrai
+goulot, qui n'est apparu que fenêtre visible.
+
+**Les découpes de Cesium.** Fenêtre visible, la ville réelle plafonnait à
+30 images par seconde, même immobile, même en baissant la définition à 40 % :
+chaque image dépassait 16,7 ms et attendait le rafraîchissement suivant de
+l'écran. En coupant les postes un par un, le temps processeur d'un rendu est
+tombé de 31,6 à 19,7 ms rien qu'en désactivant les découpes des 23 ruines du
+départ (`ClippingPolygonCollection`) — les tuiles, la suie et la définition ne
+pesaient presque rien. Les ruines sont désormais effacées par un shader posé
+sur le relevé, qui lit une carte des ruines vue de dessus (`world/photoreal.ts`) :
+une lecture de texture par pixel, quel que soit le nombre de ruines.
+
+Fenêtre visible, GTX 1650 Max-Q, pleine définition (1 522 × 680), régulateur
+coupé :
+
+| Vol                                      | Découpes de Cesium | Carte des ruines |
+| ---------------------------------------- | ------------------ | ---------------- |
+| Devant le temple, immobile               | 30 images/s        | 58 images/s      |
+| Tour du temple                           | 19 à 23 images/s   | 58 images/s      |
+| Au-dessus des 231 ruines d'une explosion | 13 à 19 images/s   | 48 à 55 images/s |
+
+La cadence est celle de l'écran à 60 Hz : 58 images par seconde, c'est une
+image manquée de temps en temps.
+
+**Le globe resté sous le relevé.** Le relevé couvre tout le sol ; le globe de
+l'IGN devait être masqué en vue réaliste, mais il ne l'était qu'au premier
+changement de vue : au démarrage, il restait dessiné sous le relevé, où il ne
+servait qu'à arrêter le regard au travers des découpes. Au-dessus des ruines
+d'une explosion, carte graphique attendue à chaque image : 19,5 ms médians avec
+lui, 13,1 ms sans. Il est désormais masqué dès le chargement, et une nappe à
+nous, qui suit le relief deux mètres sous le sol (`PhotorealCity.underlayOf`),
+joue ce rôle d'arrière-plan pour un coût négligeable : partout ailleurs, le sol
+du relevé la cache avant qu'elle ne soit peinte.
+
+La carte des ruines porte aussi, dans son alpha, la poussière retombée autour
+des ruines : le flou des contours effacés, calculé par le même worker. Il y
+ajoute quelques millisecondes, hors du fil principal, à chaque mise à jour de
+la carte.
+
 ## Reconstructions pendant un sinistre
 
 Un effondrement change la géométrie — hauteur écrêtée, gravats — et pas seulement
@@ -250,12 +333,35 @@ bâtiments, tout reconstruire coûtait 20 ms. Avec les 2 282 bâtiments réels, 
 serait plusieurs centaines de millisecondes à chaque dégât.
 
 La ville est donc découpée en **carreaux de 100 m** — 98 au total —, chacun avec
-ses propres primitives (`world/render.ts`). Chaque bâtiment a une signature
-géométrique (état, gravité, gravats) ; un carreau n'est reconstruit que si l'une
-des siennes a changé, et les reconstructions en attente sont étalées sur les
-images suivantes, les plus proches de la caméra d'abord.
+ses propres primitives (`world/render.ts`). Ils ne portent que le bâti debout,
+construit une fois pour toutes : un changement d'état n'y change que des
+couleurs. Chaque ruine a sa propre primitive, construite quand le bâtiment
+tombe, et refaite seulement si sa signature change — son état, et lesquels de
+ses voisins sont encore debout. Rassembler les ruines d'un carreau obligeait à
+toutes les régénérer à chaque nouvelle ruine : pendant une explosion, cent
+reconstructions de carreau et 2,3 s de calcul pour quatre secondes de sinistre.
 
-Un carreau coûte environ 3 ms à reconstruire, puis autant à sa première passe de
-rendu, où Cesium assemble sa géométrie. Deux reconstructions par image faisaient
-des pics de 20 ms pendant une explosion ; il n'y en a plus qu'une, et la vague de
-reconstruction se lit d'ailleurs mieux ainsi, du plus proche au plus lointain.
+Les ruines en attente sont construites les plus proches de la caméra d'abord,
+dans un budget de 3 ms par image. Une ruine coûte 0,9 ms en médiane et 3,2 ms au
+90ᵉ centile ; une explosion qui en fait deux cents se propage en quelques
+secondes au lieu de figer l'écran, et la vague se lit d'ailleurs mieux ainsi.
+
+**Les murs mitoyens.** Des pics de 130 à 150 ms subsistaient pendant une
+explosion : une seule ruine en coûtait 102, dont 98 pour ses murs mitoyens. Pour
+savoir quel voisin borde chaque tronçon de 50 cm, la distance était mesurée à
+tous les côtés de tous les voisins — des milliers quand l'un d'eux est un grand
+bâtiment au contour détaillé. Seuls les côtés qui passent près du tronçon sont
+désormais mesurés, et sans `Math.hypot`, lent sous V8 : 3,3 ms au plus pour les
+murs mitoyens d'une ruine, sur les trois cents d'une explosion.
+
+Mesures pendant une explosion, fenêtre masquée, carte graphique attendue à
+chaque image, 300 images (5 s) :
+
+| Réglage                                  | Médiane | 90ᵉ centile | 99ᵉ centile |
+| ---------------------------------------- | ------- | ----------- | ----------- |
+| Budget de 3 ms, globe dessiné            | 32,4 ms | 44,6 ms     | 74 ms       |
+| Globe masqué, murs mitoyens encore lents | 21 ms   | 30,9 ms     | 132 ms      |
+
+La dernière ligne reste à remesurer avec les murs mitoyens corrigés : Chrome
+gèle un onglet masqué qui calcule beaucoup, et les mesures suivantes n'ont pas
+pu aller au bout.

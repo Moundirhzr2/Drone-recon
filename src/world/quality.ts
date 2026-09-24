@@ -66,6 +66,18 @@ export interface QualitySettings {
   shadows: boolean;
   /** Bords d'ombre adoucis (filtrage sur plusieurs échantillons). */
   softShadows: boolean;
+  /**
+   * Finesse de la ville photoréaliste, en pixels d'erreur tolérés : même
+   * principe que `terrainDetail`, plus le nombre est BAS, plus c'est net.
+   *
+   * C'est de loin le réglage le plus coûteux. Mesuré sur une GTX 1650 devant
+   * le temple Saint-Étienne, sans la vue nadir : 16 donne 265 tuiles et
+   * 28 ms par image, 24 en donne 174 et 16 ms, 32 en donne 149 et 14 ms. À
+   * l'altitude d'un drone, 24 et 16 se distinguent à peine.
+   */
+  photorealDetail: number;
+  /** Mémoire allouée à ses tuiles, en Mo. */
+  photorealCacheMB: number;
 }
 
 export const QUALITY_LABEL: Record<QualityName, string> = {
@@ -87,6 +99,8 @@ const PROFILES: Record<QualityName, QualitySettings> = {
     msaa: 1,
     shadows: false,
     softShadows: false,
+    photorealDetail: 32,
+    photorealCacheMB: 256,
   },
   // Cartes dédiées d'entrée de gamme (GTX 16xx, RX 5xx…) : la brume et le
   // lissage, mais pas l'anticrénelage matériel.
@@ -101,6 +115,8 @@ const PROFILES: Record<QualityName, QualitySettings> = {
     msaa: 1,
     shadows: false,
     softShadows: false,
+    photorealDetail: 24,
+    photorealCacheMB: 512,
   },
   // Cartes récentes : définition native, sol plus fin, arêtes nettes.
   beau: {
@@ -114,6 +130,8 @@ const PROFILES: Record<QualityName, QualitySettings> = {
     msaa: 4,
     shadows: false,
     softShadows: true,
+    photorealDetail: 12,
+    photorealCacheMB: 1024,
   },
 };
 

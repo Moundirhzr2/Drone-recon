@@ -8,6 +8,7 @@
  * valeur a changé.
  */
 
+import { emit } from '../core/bus';
 import { toDMS, groundDistance, wrap360 } from '../core/math';
 import { DAMAGE_INFO, DAMAGE_ORDER, type Building, type DamageState } from '../world/buildings';
 import type { DroneState } from '../drone/drone';
@@ -338,6 +339,45 @@ function openPhoto(photo: Photo): void {
 }
 
 // ------------------------------------------------------------------
+// Interface masquée
+// ------------------------------------------------------------------
+/**
+ * Masque toute l'interface pour ne garder que la vue 3D : une capture d'écran,
+ * une présentation, ou simplement la ville en entier. Seul le bouton reste
+ * affiché, à la même place, pour la faire revenir.
+ *
+ * `visibility: hidden` plutôt que `display: none` : les panneaux gardent leur
+ * mise en page, donc leurs dimensions, mais ne reçoivent plus ni clic ni focus.
+ */
+export class HudToggle {
+  private readonly button = $<HTMLButtonElement>('hud-toggle');
+  private hidden = false;
+
+  constructor() {
+    this.button.addEventListener('click', () => {
+      // Le bouton ne garde pas le focus : ESPACE, qui prend les photos, le
+      // déclencherait de nouveau.
+      this.button.blur();
+      emit('view:toggle-hud');
+    });
+    this.render();
+  }
+
+  toggle(): void {
+    this.hidden = !this.hidden;
+    this.render();
+  }
+
+  private render(): void {
+    document.body.classList.toggle('hud-hidden', this.hidden);
+    const label = this.hidden ? "Afficher l'interface (I)" : "Masquer l'interface (I)";
+    this.button.title = label;
+    this.button.setAttribute('aria-label', label);
+    this.button.setAttribute('aria-pressed', String(this.hidden));
+  }
+}
+
+// ------------------------------------------------------------------
 // Bandeau de commandes et écran de chargement
 // ------------------------------------------------------------------
 export function buildKeymap(): void {
@@ -349,6 +389,7 @@ export function buildKeymap(): void {
     ['V', 'diagnostic'],
     ['M', 'rendu'],
     ['C', 'caméra'],
+    ['I', 'interface'],
     ['H', 'mains'],
     ['K', 'calibrer'],
     ['MAJ', 'stabiliser'],

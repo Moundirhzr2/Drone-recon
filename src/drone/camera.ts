@@ -34,10 +34,13 @@ export class DroneCamera {
   // Vue embarquée par défaut : c'est la vue d'un vrai pilote de drone, et elle
   // ne dépend pas d'un châssis 3D à afficher.
   mode: CameraMode = 'fpv';
-  /** Distance de recul en vue de suivi, en mètres. */
-  private distance = 26;
+  /**
+   * Distance de recul en vue de suivi, en mètres. Le drone mesure 1,2 m
+   * d'envergure : à 12 m, on le voit en entier et on lit ses détails.
+   */
+  private distance = 12;
   /** Hauteur de la caméra au-dessus du drone, en mètres. */
-  private lift = 9;
+  private lift = 4;
   /** Cap lissé de la caméra (le drone peut pivoter plus vite qu'elle). */
   private smoothHeading: number | null = null;
 

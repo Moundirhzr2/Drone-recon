@@ -906,3 +906,128 @@ body {
 #gpu-warning button:hover {
   color: var(--ink);
 }
+
+/* ---------- Visite guidée (?demo) ---------- */
+#demo-caption {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  width: max-content;
+  /* Entre les colonnes de panneaux, sans mordre sur le bouton d'interface. */
+  max-width: min(760px, calc(100vw - 660px));
+  padding: 8px 16px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* ---------- Interface masquée (bouton, touche I) ---------- */
+#hud-toggle {
+  position: absolute;
+  top: 12px;
+  /* Juste à droite de la télémétrie : 12 + 268 px, plus 8 px d'écart. */
+  left: 288px;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  color: var(--accent);
+  cursor: pointer;
+}
+#hud-toggle:hover {
+  border-color: var(--accent);
+}
+#hud-toggle svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#hud-toggle .slash {
+  display: none;
+}
+body.hud-hidden :is(#overlay-main, .panel, #keymap, #gpu-warning, #demo-caption) {
+  visibility: hidden;
+}
+/* Seul reste le bouton, discret tant qu'on ne le survole pas. */
+body.hud-hidden #hud-toggle {
+  opacity: 0.4;
+}
+body.hud-hidden #hud-toggle:hover,
+body.hud-hidden #hud-toggle:focus-visible {
+  opacity: 1;
+}
+body.hud-hidden #hud-toggle .slash {
+  display: inline;
+}
+
+/* ---------- Ville photoréaliste : sources à l'écran ---------- */
+/* Google et Cesium ion imposent que leurs logos et les sources restent
+   visibles et lisibles, même pour un usage personnel : on ne peut pas les
+   masquer. Le bandeau de crédits de Cesium, masqué en ville dessinée, se range
+   ici au milieu du bas de l'écran, sans fond, son texte en petit et à demi
+   effacé ; il reprend toute sa netteté au survol. Les logos gardent leur
+   taille et leurs couleurs : les conditions interdisent de les altérer. Il
+   reste affiché quand l'interface est masquée, et les panneaux du bas
+   remontent pour ne pas le couvrir. */
+body.photoreal #cesium .cesium-viewer-bottom {
+  display: block !important;
+  /* Cesium pose sa position en style en ligne, à chaque redimensionnement,
+     sur toute la largeur : il intercepterait les clics au bas de la vue. Le
+     bandeau est donc réduit à son contenu, et centré. */
+  left: 50% !important;
+  right: auto !important;
+  bottom: 2px !important;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  transform: translateX(-50%);
+  z-index: 11;
+  padding: 0;
+  text-align: center;
+}
+body.photoreal #cesium .cesium-widget-credits {
+  display: inline !important;
+  font-size: 9px;
+  color: #eee;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.85);
+}
+body.photoreal
+  #cesium
+  :is(
+    .cesium-credit-textContainer .cesium-credit-wrapper:not(:has(img)),
+    .cesium-credit-delimiter,
+    .cesium-credit-expand-link
+  ) {
+  opacity: 0.45;
+  transition: opacity 0.2s;
+}
+body.photoreal
+  #cesium
+  .cesium-viewer-bottom:hover
+  :is(.cesium-credit-wrapper, .cesium-credit-delimiter, .cesium-credit-expand-link) {
+  opacity: 1;
+}
+body.photoreal #hud-hands,
+body.photoreal #hud-gallery,
+body.photoreal #keymap {
+  bottom: 34px;
+}
+body.photoreal #hud-report {
+  bottom: 114px;
+}

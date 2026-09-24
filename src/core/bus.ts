@@ -23,6 +23,8 @@ export type AppEvents = {
   'view:reset-camera': void;
   /** Basculer entre caméra de suivi et vue à la première personne. */
   'view:toggle-fpv': void;
+  /** Masquer ou afficher toute l'interface, pour ne garder que la vue 3D. */
+  'view:toggle-hud': void;
   /** Activer ou couper le suivi des mains. */
   'hands:toggle': void;
   /** Relancer le calibrage des mains. */

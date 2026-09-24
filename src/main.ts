@@ -24,6 +24,7 @@ import { generateCity } from './world/city';
 import { loadRealCity } from './world/realCity';
 import { loadRelief } from './world/terrain';
 import { BuildingRenderer, RENDER_LABEL, type RenderMode } from './world/render';
+import { PhotorealCity, wantsPhotoreal } from './world/photoreal';
 import { Drone } from './drone/drone';
 import { DroneModel } from './drone/model';
 import { DroneCamera } from './drone/camera';
@@ -37,6 +38,7 @@ import { DisasterPanel } from './hud/disaster';
 import { DisasterEffects } from './effects/disasterEffects';
 import { analyse, type DiagnosticResult } from './diagnostic/detector';
 import { drawMainOverlay, drawNadirOverlay } from './diagnostic/overlay';
+import { runTour } from './demo/tour';
 import {
   boot,
   buildKeymap,
@@ -44,6 +46,7 @@ import {
   Gallery,
   GpsPanel,
   HandsPanel,
+  HudToggle,
   NadirPanel,
   ReportPanel,
   showSoftwareRenderingWarning,
@@ -71,6 +74,29 @@ async function main(): Promise<void> {
   const renderer = new BuildingRenderer(scene, city);
   renderer.build();
   boot.set(`${city.buildings.length} bâtiments construits`, 0.8);
+
+  // La ville photoréaliste : le relevé 3D de Google posé sur le relief de
+  // l'IGN, quand un jeton est fourni. La simulation, elle, reste sur les
+  // bâtiments de l'IGN (voir `world/photoreal.ts`).
+  let photoreal: PhotorealCity | null = null;
+  if (relief && wantsPhotoreal()) {
+    boot.set('Chargement de la ville photoréaliste…', 0.85);
+    photoreal = await PhotorealCity.load(
+      scene,
+      city,
+      (lon, lat) => relief.heightAt(lon, lat),
+      quality.settings,
+    );
+    if (photoreal) {
+      renderer.setPhotoreal(true);
+      document.body.classList.add('photoreal');
+    }
+  }
+  const worldLabel = photoreal
+    ? 'ville réelle photoréaliste'
+    : wantsPhotoreal()
+      ? 'ville dessinée (relevé photoréaliste indisponible)'
+      : backendLabel;
 
   // --- Drone ---------------------------------------------------------------
   // Sa hauteur au-dessus du sol se mesure sur le relief réel quand on l'a.
@@ -103,6 +129,7 @@ async function main(): Promise<void> {
   const handsPanel = new HandsPanel();
   const report = new ReportPanel();
   const gallery = new Gallery();
+  const hudToggle = new HudToggle();
 
   const nadirCanvas = document.getElementById('nadir-canvas') as HTMLCanvasElement;
   const nadirOverlay = document.getElementById('nadir-overlay') as HTMLCanvasElement;
@@ -122,7 +149,10 @@ async function main(): Promise<void> {
   // étale leur reconstruction sur les images suivantes (voir `world/render.ts`) :
   // il suffit de lui signaler qu'un état a changé.
   const disasterPanel = new DisasterPanel(city, player, {
-    onRebuild: () => renderer.sync(),
+    onRebuild: () => {
+      renderer.sync();
+      photoreal?.sync();
+    },
   });
   let lastResult: DiagnosticResult = {
     detections: [],
@@ -150,13 +180,17 @@ async function main(): Promise<void> {
   });
 
   // Fumée, flammes et eau brouilleraient la lecture des vues techniques, qui
-  // ne montrent que la classification des dommages.
-  const syncEffectsVisibility = () => effects.setVisible(renderMode !== 'scan' && !diagnostic);
+  // ne montrent que la classification des dommages. Pour la même raison, ces
+  // vues reviennent à la ville dessinée.
+  const syncViews = () => {
+    effects.setVisible(renderMode !== 'scan' && !diagnostic);
+    photoreal?.setVisible(renderMode === 'realiste' && !diagnostic);
+  };
 
   on('view:toggle-diagnostic', () => {
     diagnostic = !diagnostic;
     renderer.setDiagnostic(diagnostic);
-    syncEffectsVisibility();
+    syncViews();
     report.setOpen(diagnostic);
     handsPanel.setMessage(diagnostic ? 'Vue diagnostique' : 'Vue brute', 'ok');
   });
@@ -164,7 +198,7 @@ async function main(): Promise<void> {
   on('view:cycle-render', () => {
     renderMode = RENDER_CYCLE[(RENDER_CYCLE.indexOf(renderMode) + 1) % RENDER_CYCLE.length];
     renderer.setRenderMode(renderMode);
-    syncEffectsVisibility();
+    syncViews();
     handsPanel.setMessage(`Rendu : ${RENDER_LABEL[renderMode]}`, 'ok');
   });
 
@@ -174,6 +208,8 @@ async function main(): Promise<void> {
     model?.setVisible(mode === 'suivi');
     handsPanel.setMessage(mode === 'fpv' ? 'Caméra embarquée' : 'Caméra de suivi', 'ok');
   });
+
+  on('view:toggle-hud', () => hudToggle.toggle());
 
   on('disaster:toggle-play', () => {
     disasterPanel.open();
@@ -220,7 +256,7 @@ async function main(): Promise<void> {
   camera.snap();
   viewer.resize();
   viewer.render();
-  boot.set(`Prêt — ${backendLabel} — qualité ${QUALITY_LABEL[quality.profile]}`, 1);
+  boot.set(`Prêt — ${worldLabel} — qualité ${QUALITY_LABEL[quality.profile]}`, 1);
   setTimeout(() => boot.hide(), 450);
   handsPanel.setMessage('Prêt au décollage — H pour piloter aux mains', 'ok');
   // Affiché ici et pas pendant la création de la scène : c'est seulement
@@ -295,7 +331,9 @@ async function main(): Promise<void> {
 
     // Vue nadir : seconde passe de rendu, cadencée à part.
     if (nadir.due(now)) {
-      const g = nadir.render(nadirCanvas);
+      const g = photoreal
+        ? photoreal.coarser(() => nadir.render(nadirCanvas))
+        : nadir.render(nadirCanvas);
       lastResult = analyse(city.buildings, g);
       drawNadirOverlay(nadirOverlay, lastResult.detections, g, diagnostic);
       nadirPanel.update(g, lastResult.detections, diagnostic);
@@ -353,6 +391,20 @@ async function main(): Promise<void> {
 
   requestAnimationFrame(frame);
 
+  // Visite guidée : `?demo` dans l'adresse.
+  if (new URLSearchParams(window.location.search).has('demo')) {
+    void runTour({
+      city,
+      drone: drone.state,
+      panel: disasterPanel,
+      player,
+      diagnostic: () => diagnostic,
+      tilesLoaded: () =>
+        (!scene.globe.show || scene.globe.tilesLoaded) && (photoreal?.tilesLoaded ?? true),
+      photoreal: photoreal !== null,
+    });
+  }
+
   // Raccourcis de débogage, accessibles depuis la console du navigateur.
   // `step()` fait avancer la simulation d'une image même quand la boucle est
   // gelée (fenêtre en arrière-plan), ce qui rend la scène inspectable.
@@ -389,6 +441,7 @@ async function main(): Promise<void> {
       disasterPanel,
       effects,
       quality,
+      photoreal,
       step: (n?: number) => step(n ?? performance.now()),
       get diagnostic() {
         return diagnostic;

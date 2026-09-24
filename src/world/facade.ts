@@ -70,7 +70,24 @@ export const SURFACE = {
    * terrasse, verrière — et sa forme viennent de la BD TOPO®.
    */
   roofReal: 5,
+  /**
+   * Mur mis à nu : l'intérieur d'un immeuble éventré, ou le mitoyen d'un
+   * voisin resté debout, avec la teinte de chaque pièce et la trace des
+   * planchers.
+   */
+  interior: 6,
 } as const;
+
+/**
+ * Matière d'une ruine, transmise au shader dans l'attribut `facade` : code de
+ * couverture du bâtiment (ses tuiles ou ses ardoises se retrouvent dans les
+ * gravats), orientation de la face vers le ciel (0 à 1, pour la poussière) et
+ * graine propre au bâtiment.
+ */
+export interface RubbleMaterial {
+  roof: number;
+  seed: number;
+}
 
 /**
  * Style de façade d'un bâtiment, transmis au shader :
@@ -197,6 +214,8 @@ float detail(vec2 cells) {
 
 float fx; // metres de mur couverts par un pixel, en largeur
 float fy; // idem, en hauteur
+// 1 sur le pan de facade d'une ruine : plus une vitre, et la poussiere.
+float ruinedFacade;
 
 // Marche filtree : un bord s'etale sur un pixel au lieu de basculer d'un coup,
 // ce qui supprime l'escalier des contours et leur scintillement.
@@ -333,10 +352,13 @@ vec3 facade(vec3 wall) {
 
   vec3 glass = glassColor(h2);
   glass = mix(glass, vec3(0.58, 0.53, 0.45), step(0.84, h1) * 0.8); // rideaux tires
+  // Une ruine n'a plus de vitres : le souffle les a emportees, et l'on voit
+  // l'ombre de ce qui reste des pieces.
+  glass = mix(glass, vec3(0.07, 0.065, 0.06) + 0.12 * h1, ruinedFacade);
   vec3 stone = mix(wall, vec3(0.80, 0.77, 0.70), 0.55);
   vec3 detailed = wall;
   float winFrac = winW * winH / (bay * floorH);
-  vec3 winMean = vec3(0.16, 0.18, 0.2);
+  vec3 winMean = mix(vec3(0.16, 0.18, 0.2), vec3(0.11, 0.1, 0.095), ruinedFacade);
 
   if (ground && shop > 0.5) {
     // --- Rez-de-chaussee commercial : vitrines et enseignes -----------------
@@ -360,8 +382,9 @@ vec3 facade(vec3 wall) {
       float frameW = 0.14;
       float frame = insideX(winW * 0.5 + frameW, x) * bandY(yIn, sill - 0.12, sill + winH + frameW) * fits;
       detailed = mix(detailed, stone, frame * (1.0 - isDoor));
-      float withShutters = step(0.25, seed);
-      float closed = step(0.9, h2) * withShutters;
+      // Sur une ruine, un volet sur deux a ete arrache, et aucun n'est clos.
+      float withShutters = step(0.25, seed) * mix(1.0, step(0.5, h1), ruinedFacade);
+      float closed = step(0.9, h2) * withShutters * (1.0 - ruinedFacade);
       float sx = abs(x) - winW * 0.5 - frameW;
       float shutter = (stepX(0.03, sx) * (1.0 - stepX(winW * 0.5, sx))) * wy * fits * withShutters * (1.0 - closed) * (1.0 - isDoor);
       float slats = mix(0.5, step(0.5, fract(yIn / 0.09)), detailP(1e6, 0.09));
@@ -510,6 +533,159 @@ vec3 roofReal(vec3 tint) {
   return c;
 }
 
+// --- Ruines ------------------------------------------------------------------
+
+// Cellules de Voronoi : distance au germe le plus proche (x), au second (y), et
+// un tirage propre a la cellule la plus proche (z). La ou x et y se rejoignent
+// passe le contour d'une cellule : la fente sombre entre deux morceaux. Le
+// dernier argument recoit la position du germe le plus proche, relative au
+// point.
+vec3 worley(vec2 p, out vec2 toSeed) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  float d1 = 8.0;
+  float d2 = 8.0;
+  float id = 0.0;
+  toSeed = vec2(0.0);
+  for (int y = -1; y <= 1; y++) {
+    for (int x = -1; x <= 1; x++) {
+      vec2 g = vec2(float(x), float(y));
+      vec2 r = g + vec2(hash21(i + g), hash21(i + g + 19.19)) - f;
+      float d = dot(r, r);
+      if (d < d1) {
+        d2 = d1;
+        d1 = d;
+        id = hash21(i + g + 7.7);
+        toSeed = r;
+      } else if (d < d2) {
+        d2 = d;
+      }
+    }
+  }
+  return vec3(sqrt(d1), sqrt(d2), id);
+}
+
+// Ce dont un immeuble est fait, une fois a terre : beton, brique, enduit, bois
+// de charpente, et sa couverture - tuiles, ardoises ou tole - d'apres l'IGN.
+// Quelques cellules restent des creux, dans l'ombre.
+vec3 rubbleColor(float h, float roofCode) {
+  if (h < 0.30) return vec3(0.55, 0.54, 0.51);
+  if (h < 0.44) return vec3(0.52, 0.35, 0.28);
+  if (h < 0.62) return vec3(0.70, 0.66, 0.59);
+  if (h < 0.68) return vec3(0.38, 0.30, 0.22);
+  if (h < 0.88) {
+    float code = mod(roofCode, 10.0);
+    if (code < 1.5) return vec3(0.56, 0.34, 0.25);
+    if (code < 2.5) return vec3(0.27, 0.28, 0.30);
+    if (code < 3.5) return vec3(0.50, 0.52, 0.54);
+    return vec3(0.48, 0.47, 0.45);
+  }
+  return vec3(0.17, 0.16, 0.15);
+}
+
+// Teinte d'instance ordinaire des gravats (#6b6459) : la couleur d'un morceau
+// lui est rapportee, pour que des gravats calcines, plus sombres, le restent.
+const vec3 RUBBLE_TINT = vec3(0.42, 0.39, 0.35);
+// Poussiere de platre et de beton, dont tout ce qui est tombe est couvert.
+const vec3 RUBBLE_DUST = vec3(0.57, 0.54, 0.49);
+
+// Eclairage d'un morceau pose de travers : plus ou moins tourne vers le jour,
+// et plus clair d'un cote que de l'autre, dans une direction qui lui est
+// propre.
+float rubbleLit(float id, vec2 toSeed, float seed) {
+  float a = 6.2832 * hash21(vec2(id * 57.3, seed * 7.1));
+  float lit = 0.7 + 0.45 * hash21(vec2(id * 13.7, seed * 3.3));
+  return lit * (1.0 + 0.35 * dot(toSeed, vec2(cos(a), sin(a))));
+}
+
+// Gravats : des blocs de 1,1 m, dont la moitie ont eclate en eclats de 35 cm,
+// chacun pose de travers - eclaire, ou dans l'ombre, et plus clair d'un cote
+// que de l'autre -, separes par des fentes d'ombre, et sous une poussiere qui
+// eteint leurs couleurs. Des cellules plates de couleurs franches faisaient un
+// carrelage, pas un tas. Tout est en metres sur la surface : un grand tas
+// montre autant de morceaux au metre qu'un petit.
+vec3 rubble(vec3 tint) {
+  vec2 m = v_st * v_surf.yz;
+  float seed = v_facade.z;
+  fx = max(fwidth(m.x), 1e-4) * 0.75;
+  fy = max(fwidth(m.y), 1e-4) * 0.75;
+  float px = max(fx, fy);
+  float dBig = 1.0 - smoothstep(0.12, 0.4, px / 1.1);
+  float dSmall = 1.0 - smoothstep(0.12, 0.4, px / 0.35);
+
+  vec2 toBig;
+  vec2 toSmall;
+  vec3 big = worley(m / 1.1 + seed * 31.0, toBig);
+  vec3 small = worley(m / 0.35 + seed * 13.0, toSmall);
+  // Un bloc sur deux a eclate. Ses eclats se fondent dans sa teinte a mesure
+  // qu'ils rapetissent a l'ecran, sans quoi ils scintilleraient.
+  float broken = step(big.z, 0.5);
+  float shard = broken * dSmall;
+
+  vec3 color = mix(rubbleColor(big.z, v_facade.x), rubbleColor(small.z, v_facade.x), shard);
+  vec3 c = mix(color, RUBBLE_DUST, 0.4);
+  float lit = mix(rubbleLit(big.z, toBig, seed), rubbleLit(small.z, toSmall, seed), shard);
+  c *= mix(1.0, lit, dBig);
+  // Fentes d'ombre, plus larges entre les gros blocs.
+  float edge = mix(big.y - big.x, small.y - small.x, broken);
+  float gap = mix(0.2, 0.1, broken);
+  c *= 1.0 - 0.7 * (1.0 - smoothstep(0.0, gap, edge)) * mix(dBig, dSmall, broken);
+  // Grain des eclats sur les gros blocs.
+  c *= 1.0 + 0.16 * (small.z - 0.5) * (1.0 - broken) * dSmall;
+  // Au loin, le tas se fond dans sa teinte moyenne.
+  c = mix(vec3(0.45, 0.41, 0.36), c, dBig);
+  // Plus de poussiere encore, par plaques, sur les faces tournees vers le ciel.
+  float dust = smoothstep(0.5, 0.95, v_facade.y) * (0.25 + 0.45 * vnoise(m * 0.3 + seed * 9.0));
+  c = mix(c, RUBBLE_DUST, 0.6 * dust);
+  return c * (tint / RUBBLE_TINT);
+}
+
+// Mur mis a nu - mitoyen d'un voisin, ou envers d'un mur de la ruine : la
+// maconnerie, moellons ou brique, ou restent par plaques les enduits des
+// pieces disparues, etage par etage. A chaque plancher arrache, la tranche
+// sombre de la dalle ; la trace plus claire des cloisons tombees ; parfois un
+// conduit de cheminee, noirci ; la crasse en coulures, et la poussiere au
+// pied. Des aplats pastel, clairs et nets, faisaient des panneaux de decor.
+vec3 interiorWall(vec3 tint) {
+  vec2 m = v_st * v_surf.yz;
+  float seed = v_facade.z;
+  fx = max(fwidth(m.x), 1e-4) * 0.75;
+  fy = max(fwidth(m.y), 1e-4) * 0.75;
+  float d = detailP(3.6, 3.2);
+
+  float brick = step(0.55, hash21(vec2(seed * 17.0, 3.0)));
+  float courseH = mix(0.32, 0.075, brick);
+  vec3 masonry = mix(vec3(0.50, 0.46, 0.41), vec3(0.50, 0.37, 0.31), brick);
+  masonry *= 0.92 + 0.1 * mix(0.5, step(0.5, fract(m.y / courseH)), detailP(1e6, courseH));
+
+  float level = floor(m.y / 3.2);
+  float yIn = m.y - level * 3.2;
+  float roomW = 3.6 + 1.6 * hash21(vec2(level, seed * 13.0));
+  float room = floor(m.x / roomW);
+  float h = hash21(vec2(room, level) + seed * 29.0);
+  vec3 paint = h < 0.3 ? vec3(0.70, 0.66, 0.58)
+             : h < 0.5 ? vec3(0.58, 0.62, 0.56)
+             : h < 0.68 ? vec3(0.68, 0.58, 0.49)
+             : h < 0.84 ? vec3(0.56, 0.58, 0.63)
+             : vec3(0.74, 0.72, 0.68);
+  vec3 plaster = mix(vec3(0.62, 0.6, 0.56), paint, 0.35);
+  // L'enduit tient mal le long des planchers arraches : la maconnerie y
+  // apparait par petites plaques.
+  float nearSlab = 1.0 - smoothstep(0.15, 0.6, min(yIn, 3.2 - yIn));
+  float n = mix(0.5, vnoise(m * 1.6 + seed * 5.0), detailP(0.7, 0.7));
+  vec3 c = mix(plaster, masonry, smoothstep(0.64, 0.72, n + 0.2 * nearSlab));
+  float xIn = m.x - room * roomW;
+  c = mix(c, masonry * 1.08, 0.5 * (1.0 - stepX(0.12, min(xIn, roomW - xIn))));
+  c = mix(c, vec3(0.22, 0.21, 0.2), bandY(yIn, 0.0, 0.3));
+  float flueX = (0.2 + 0.6 * hash21(vec2(seed * 7.0, 1.0))) * v_surf.y;
+  float flue = (1.0 - stepX(0.35, abs(m.x - flueX))) * step(0.4, hash21(vec2(seed * 3.0, 2.0)));
+  c *= 1.0 - 0.5 * flue;
+  c *= 0.8 + 0.22 * vnoise(vec2(m.x * 0.8, m.y * 0.1) + seed * 5.0);
+  c = mix(c, vec3(0.6, 0.57, 0.52), 0.35 * (1.0 - smoothstep(0.0, 6.0, m.y)));
+  c = mix(vec3(0.46, 0.43, 0.39), c, d);
+  return c * (tint / RUBBLE_TINT);
+}
+
 void main()
 {
   vec4 base = czm_gammaCorrect(v_color);
@@ -520,10 +696,24 @@ void main()
   // construction, alors que la couleur par instance reste modifiable a chaud :
   // c'est donc elle qui porte la bascule vers l'aplat du diagnostic.
   float textured = step(0.75, v_color.a);
+  // Alpha entre 0,75 et 0,95 : un batiment incendie. Sa geometrie reste celle
+  // du batiment debout, construite une fois pour toutes ; c'est ici que ses
+  // facades deviennent calcinees.
+  if (style < 0.5 && textured > 0.5 && v_color.a < 0.95) style = 4.0;
+  // Alpha entre 0,95 et 0,99 : le pan de facade d'une ruine.
+  ruinedFacade = style < 0.5 && textured > 0.5 && v_color.a < 0.99 ? 1.0 : 0.0;
 
   if (style < 0.5) {
     // --- FACADE ---------------------------------------------------------
     tex = facade(tex);
+    if (ruinedFacade > 0.5) {
+      // Poussiere de l'effondrement : epaisse au pied du mur, en coulures
+      // plus haut.
+      vec2 m = vec2(v_st.s * v_surf.y, v_st.t * v_surf.z);
+      float low = 1.0 - smoothstep(0.0, 0.7 * v_surf.z, m.y);
+      float runs = vnoise(vec2(m.x * 0.9, m.y * 0.07) + v_facade.z * 17.0);
+      tex = mix(tex, vec3(0.6, 0.57, 0.52), clamp(0.2 + 0.4 * low + 0.3 * (runs - 0.5), 0.0, 0.7));
+    }
 
   } else if (style < 1.5) {
     // --- TOITURE --------------------------------------------------------
@@ -541,8 +731,11 @@ void main()
   } else if (style < 2.5) {
     // --- GRAVATS --------------------------------------------------------
     // Pas de trame : une ruine ne doit surtout pas avoir l'air reguliere.
-    float dn = detail(v_st * 17.0);
-    tex *= 0.76 + 0.36 * mix(0.5, hash21(floor(v_st * 17.0)), dn);
+    tex = rubble(tex);
+
+  } else if (style > 5.5) {
+    // --- MUR MIS A NU ---------------------------------------------------
+    tex = interiorWall(tex);
 
   } else if (style > 4.5) {
     // --- TOITURE REELLE -------------------------------------------------
@@ -874,6 +1067,422 @@ export function footprintOutline(rings: Ring[], height: number): Cesium.Geometry
     primitiveType: Cesium.PrimitiveType.LINES,
     boundingSphere: Cesium.BoundingSphere.fromVertices(pos),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Ruines
+// ---------------------------------------------------------------------------
+
+/** Bruit lisse et déterministe, entre -1 et 1. */
+function valueNoise(x: number, y: number, seed: number): number {
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  const u = x - xi;
+  const v = y - yi;
+  const su = u * u * (3 - 2 * u);
+  const sv = v * v * (3 - 2 * v);
+  const salt = Math.floor(seed * 1e6);
+  const at = (i: number, j: number) => {
+    let n = (i * 374761393 + j * 668265263 + salt * 1442695041) | 0;
+    n = Math.imul(n ^ (n >>> 13), 1274126177);
+    return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
+  };
+  const a = at(xi, yi);
+  const b = at(xi + 1, yi);
+  const c = at(xi, yi + 1);
+  const d = at(xi + 1, yi + 1);
+  return 2 * (a + (b - a) * su + (c - a) * sv + (a - b - c + d) * su * sv) - 1;
+}
+
+/** Trois octaves de bruit : des formes à plusieurs échelles, entre -0,9 et 0,9. */
+function fbm(x: number, y: number, seed: number): number {
+  let sum = 0;
+  let amp = 0.5;
+  let freq = 1;
+  for (let o = 0; o < 3; o++) {
+    sum += amp * valueNoise(x * freq, y * freq, seed + o * 17.3);
+    amp *= 0.5;
+    freq *= 2.07;
+  }
+  return sum;
+}
+
+/** Distance signée au contour : positive dedans ; une cour compte comme dehors. */
+function signedDistance(rings: Ring[], x: number, y: number): number {
+  let inside = false;
+  let best = Infinity;
+  for (const ring of rings) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i];
+      const [xj, yj] = ring[j];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+      const dx = xj - xi;
+      const dy = yj - yi;
+      const t = Math.max(
+        0,
+        Math.min(1, ((x - xi) * dx + (y - yi) * dy) / (dx * dx + dy * dy || 1)),
+      );
+      best = Math.min(best, Math.hypot(x - xi - t * dx, y - yi - t * dy));
+    }
+  }
+  return inside ? best : -best;
+}
+
+/** Accumulateur de sommets au format du shader de bâti. */
+class Builder {
+  positions: number[] = [];
+  normals: number[] = [];
+  sts: number[] = [];
+  surfs: number[] = [];
+  facades: number[] = [];
+  indices: number[] = [];
+
+  /**
+   * Un quadrilatère plan, sommets dans le sens trigonométrique vu de sa face
+   * avant. `st` en coordonnées de texture, `surf` et `facade` comme ailleurs.
+   */
+  quad(
+    p: number[][],
+    n: readonly number[],
+    st: number[][],
+    surf: readonly number[],
+    facade: readonly number[],
+  ): void {
+    const base = this.positions.length / 3;
+    for (let k = 0; k < 4; k++) {
+      this.positions.push(p[k][0], p[k][1], p[k][2]);
+      this.normals.push(n[0], n[1], n[2]);
+      this.sts.push(st[k][0], st[k][1]);
+      this.surfs.push(surf[0], surf[1], surf[2]);
+      this.facades.push(facade[0], facade[1], facade[2], facade[3]);
+    }
+    this.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+
+  get empty(): boolean {
+    return this.indices.length === 0;
+  }
+
+  build(): Cesium.Geometry {
+    return buildGeometry(
+      this.positions,
+      this.normals,
+      this.sts,
+      this.surfs,
+      this.facades,
+      this.indices,
+    );
+  }
+}
+
+/**
+ * Tas de gravats : ce qu'il reste d'un bâtiment effondré, ou le cœur d'un
+ * bâtiment éventré.
+ *
+ * Une grille de hauteurs posée sur le contour, qui déborde de `spill` mètres
+ * sur la rue. Le tas monte des bords vers le milieu, et un bruit à deux
+ * échelles le rend irrégulier : des blocs de quelques mètres, des bosses plus
+ * petites. Les normales viennent des pentes de la grille : c'est l'éclairage
+ * de Cesium qui sculpte le tas.
+ */
+export function rubbleHeap(
+  rings: Ring[],
+  height: number,
+  spill: number,
+  material: RubbleMaterial,
+): Cesium.Geometry {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of rings[0]) {
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+  const x0 = minX - spill;
+  const y0 = minY - spill;
+  const W = maxX - minX + 2 * spill;
+  const D = maxY - minY + 2 * spill;
+  // Une maille de 1,8 m au moins : la texture porte le détail, la grille n'a
+  // qu'à donner la forme du tas. Plus fine, elle alourdissait chaque
+  // reconstruction de carreau pendant un sinistre.
+  const step = Math.max(1.8, Math.sqrt(W * D) / 20);
+  const nx = Math.max(2, Math.ceil(W / step) + 1);
+  const ny = Math.max(2, Math.ceil(D / step) + 1);
+  const rise = Math.min(5, Math.max(1.2, 0.3 * Math.min(maxX - minX, maxY - minY)));
+
+  const h = new Float64Array(nx * ny);
+  const kept = new Uint8Array(nx * ny);
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const x = x0 + (i * W) / (nx - 1);
+      const y = y0 + (j * D) / (ny - 1);
+      const sd = signedDistance(rings, x, y);
+      let base = 0;
+      if (sd >= 0) {
+        const t = Math.min(sd / rise, 1);
+        base = height * (0.4 + 0.6 * t * t * (3 - 2 * t));
+        kept[j * nx + i] = 1;
+      } else if (sd > -spill) {
+        const k = 1 + sd / spill;
+        base = height * 0.4 * k * k;
+        kept[j * nx + i] = 1;
+      }
+      const blocks = fbm(x / 3.2, y / 3.2, material.seed);
+      const bumps = valueNoise(x / 0.9, y / 0.9, material.seed + 7.3);
+      h[j * nx + i] = Math.max(0.03, base * (1 + 0.55 * blocks) + 0.22 * bumps * Math.min(1, base));
+    }
+  }
+
+  const b = new Builder();
+  const dx = W / (nx - 1);
+  const dy = D / (ny - 1);
+  const at = (i: number, j: number) =>
+    h[Math.min(ny - 1, Math.max(0, j)) * nx + Math.min(nx - 1, Math.max(0, i))];
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const gx = (at(i + 1, j) - at(i - 1, j)) / (2 * dx);
+      const gy = (at(i, j + 1) - at(i, j - 1)) / (2 * dy);
+      const len = Math.hypot(gx, gy, 1);
+      const up = 1 / len;
+      b.positions.push(x0 + i * dx, y0 + j * dy, h[j * nx + i]);
+      b.normals.push(-gx / len, -gy / len, up);
+      b.sts.push(i / (nx - 1), j / (ny - 1));
+      b.surfs.push(SURFACE.rubble, W, D);
+      b.facades.push(material.roof, up, material.seed, 0);
+    }
+  }
+  for (let j = 0; j < ny - 1; j++) {
+    for (let i = 0; i < nx - 1; i++) {
+      const a = j * nx + i;
+      if (!kept[a] || !kept[a + 1] || !kept[a + nx] || !kept[a + nx + 1]) continue;
+      b.indices.push(a, a + 1, a + nx + 1, a, a + nx + 1, a + nx);
+    }
+  }
+  return b.build();
+}
+
+/**
+ * Murs éventrés : l'enveloppe d'un bâtiment, épaisse de `thickness`, au sommet
+ * déchiqueté. `heightAt(s, corner, index)` donne la hauteur restante à
+ * l'abscisse `s` du périmètre, à `corner` mètres de l'angle le plus proche,
+ * l'angle numéro `index` ; 0 là où le mur est tombé.
+ *
+ * La face extérieure garde la façade du bâtiment, fenêtres comprises, à leur
+ * hauteur d'origine : `fullHeight` fixe la trame des étages. La face intérieure
+ * est un mur mis à nu, la tranche du haut des gravats. Les deux géométries
+ * sont rendues séparément, parce qu'elles n'ont pas la même teinte.
+ */
+export function brokenWalls(
+  rings: Ring[],
+  thickness: number,
+  fullHeight: number,
+  variant: FacadeVariant,
+  material: RubbleMaterial,
+  heightAt: (s: number, corner: number, index: number) => number,
+): { outer: Cesium.Geometry | null; inner: Cesium.Geometry | null } {
+  const outer = new Builder();
+  const inner = new Builder();
+  const inside = [material.roof, 0, material.seed, 0];
+  let s0 = 0;
+
+  for (const ring of rings) {
+    const n = ring.length;
+    // Abscisse de chaque sommet le long du contour.
+    const starts: number[] = [];
+    let perimeter = 0;
+    for (let i = 0; i < n; i++) {
+      starts.push(perimeter);
+      const [ax, ay] = ring[i];
+      const [bx, by] = ring[(i + 1) % n];
+      perimeter += Math.hypot(bx - ax, by - ay);
+    }
+    // Les vrais angles, où le mur tourne de plus de 35°. Les contours de
+    // l'IGN ont bien d'autres sommets, tous les mètres ou deux le long d'une
+    // façade : les prendre pour des angles hérissait le haut des murs d'un
+    // pic à chacun.
+    const corners: Array<[number, number]> = [];
+    for (let i = 0; i < n; i++) {
+      const [px, py] = ring[(i + n - 1) % n];
+      const [cx, cy] = ring[i];
+      const [qx, qy] = ring[(i + 1) % n];
+      const la = Math.hypot(cx - px, cy - py);
+      const lb = Math.hypot(qx - cx, qy - cy);
+      if (la < 1e-6 || lb < 1e-6) continue;
+      const cos = ((cx - px) * (qx - cx) + (cy - py) * (qy - cy)) / (la * lb);
+      if (cos < Math.cos(35 * (Math.PI / 180))) corners.push([starts[i], i]);
+    }
+    const nearest = (at: number): [number, number] => {
+      let best = Infinity;
+      let index = -1;
+      for (const [cs, ci] of corners) {
+        const d = Math.abs(at - cs);
+        const cyclic = Math.min(d, perimeter - d);
+        if (cyclic < best) {
+          best = cyclic;
+          index = ci;
+        }
+      }
+      return [best, index];
+    };
+
+    for (let i = 0; i < n; i++) {
+      const [ax, ay] = ring[i];
+      const [bx, by] = ring[(i + 1) % n];
+      const L = Math.hypot(bx - ax, by - ay);
+      if (L < 0.05) continue;
+      const ux = (bx - ax) / L;
+      const uy = (by - ay) / L;
+      // Normale extérieure, à droite du sens de parcours (voir footprintWalls).
+      const nx = uy;
+      const ny = -ux;
+      const steps = Math.max(1, Math.ceil(L / 2.0));
+      const along: number[] = [];
+      const z: number[] = [];
+      for (let t = 0; t <= steps; t++) {
+        const a = (L * t) / steps;
+        along.push(a);
+        const [corner, index] = nearest(starts[i] + a);
+        z.push(Math.max(0, heightAt(s0 + starts[i] + a, corner, index)));
+      }
+      for (let t = 0; t < steps; t++) {
+        const za = z[t];
+        const zb = z[t + 1];
+        if (za < 0.05 && zb < 0.05) continue;
+        const pa = [ax + ux * along[t], ay + uy * along[t]];
+        const pb = [ax + ux * along[t + 1], ay + uy * along[t + 1]];
+        const qa = [pa[0] - nx * thickness, pa[1] - ny * thickness];
+        const qb = [pb[0] - nx * thickness, pb[1] - ny * thickness];
+        // Coordonnées de texture entre 0 et 1, l'échelle en mètres dans
+        // `surf` : Cesium compresse les coordonnées de texture en les
+        // supposant dans cet intervalle. Données en mètres, elles étaient
+        // écrasées sommet par sommet, et la texture se brisait en triangles
+        // alternés, clairs et sombres.
+        const sa = (starts[i] + along[t]) / perimeter;
+        const sb = (starts[i] + along[t + 1]) / perimeter;
+        const face = [SURFACE.interior, perimeter, fullHeight];
+        const top = [SURFACE.rubble, perimeter, thickness];
+
+        outer.quad(
+          [
+            [pa[0], pa[1], 0],
+            [pb[0], pb[1], 0],
+            [pb[0], pb[1], zb],
+            [pa[0], pa[1], za],
+          ],
+          [nx, ny, 0],
+          [
+            [along[t] / L, 0],
+            [along[t + 1] / L, 0],
+            [along[t + 1] / L, zb / fullHeight],
+            [along[t] / L, za / fullHeight],
+          ],
+          [SURFACE.facade, L, fullHeight],
+          variant,
+        );
+        inner.quad(
+          [
+            [qb[0], qb[1], 0],
+            [qa[0], qa[1], 0],
+            [qa[0], qa[1], za],
+            [qb[0], qb[1], zb],
+          ],
+          [-nx, -ny, 0],
+          [
+            [sb, 0],
+            [sa, 0],
+            [sa, za / fullHeight],
+            [sb, zb / fullHeight],
+          ],
+          face,
+          inside,
+        );
+        // Tranche du haut, inclinée comme la cassure : normale du plan qui
+        // passe par le bord extérieur et par l'épaisseur du mur.
+        const ex = pb[0] - pa[0];
+        const ey = pb[1] - pa[1];
+        const ez = zb - za;
+        const cx = ez * ny * thickness;
+        const cy = -ez * nx * thickness;
+        const cz = (ey * nx - ex * ny) * thickness;
+        const cl = Math.hypot(cx, cy, cz) || 1;
+        inner.quad(
+          [
+            [pa[0], pa[1], za],
+            [pb[0], pb[1], zb],
+            [qb[0], qb[1], zb],
+            [qa[0], qa[1], za],
+          ],
+          [cx / cl, cy / cl, cz / cl],
+          [
+            [sa, 0],
+            [sb, 0],
+            [sb, 1],
+            [sa, 1],
+          ],
+          top,
+          [material.roof, cz / cl, material.seed, 0],
+        );
+      }
+    }
+    s0 += perimeter;
+  }
+  return {
+    outer: outer.empty ? null : outer.build(),
+    inner: inner.empty ? null : inner.build(),
+  };
+}
+
+/**
+ * Mur mitoyen mis à nu : le flanc d'un voisin resté debout, vu depuis la
+ * ruine, de `a` à `b` le long du contour de la ruine, face tournée vers son
+ * intérieur. `heightAt(t)` en donne la hauteur, `t` allant de 0 à 1 : le
+ * pignon d'une maison dont le faîtage court le long de la rue monte au milieu.
+ */
+export function exposedWall(
+  a: readonly [number, number],
+  b: readonly [number, number],
+  heightAt: (t: number) => number,
+  material: RubbleMaterial,
+): Cesium.Geometry {
+  const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const ux = (b[0] - a[0]) / L;
+  const uy = (b[1] - a[1]) / L;
+  const steps = Math.max(1, Math.ceil(L / 2.0));
+  const w = new Builder();
+  const facade = [material.roof, 0, material.seed, 0];
+  const z: number[] = [];
+  for (let t = 0; t <= steps; t++) z.push(heightAt(t / steps));
+  // Coordonnées de texture entre 0 et 1, comme partout (voir brokenWalls).
+  const H = Math.max(...z, 1);
+  for (let t = 0; t < steps; t++) {
+    const t0 = t / steps;
+    const t1 = (t + 1) / steps;
+    const p0 = [a[0] + ux * L * t0, a[1] + uy * L * t0];
+    const p1 = [a[0] + ux * L * t1, a[1] + uy * L * t1];
+    const z0 = z[t];
+    const z1 = z[t + 1];
+    w.quad(
+      [
+        [p1[0], p1[1], 0],
+        [p0[0], p0[1], 0],
+        [p0[0], p0[1], z0],
+        [p1[0], p1[1], z1],
+      ],
+      [-uy, ux, 0],
+      [
+        [t1, 0],
+        [t0, 0],
+        [t0, z0 / H],
+        [t1, z1 / H],
+      ],
+      [SURFACE.interior, L, H],
+      facade,
+    );
+  }
+  return w.build();
 }
 
 /** L'apparence texturée, à partager par toutes les instances de bâti. */

@@ -2,7 +2,6 @@
 
 interface ImportMetaEnv {
   /** 'offline' | 'ion' | 'google' — voir src/core/config.ts */
-  readonly VITE_WORLD_BACKEND?: string;
   readonly VITE_CESIUM_ION_TOKEN?: string;
   readonly VITE_GOOGLE_MAPS_KEY?: string;
 }

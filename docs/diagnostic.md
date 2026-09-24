@@ -79,22 +79,40 @@ Dans `src/core/config.ts`, section `detector` :
 
 ## Fonds de scène
 
-Par défaut, le simulateur n'a besoin d'aucune clé. Pour changer de fond, copier
-`.env.example` en `.env` :
+Par défaut, le simulateur n'a besoin d'aucune clé : la ville est dessinée d'après
+l'IGN. Avec un jeton ou une clé dans `.env.local` (voir `.env.example`), elle
+devient photoréaliste :
 
-| `VITE_WORLD_BACKEND` | Rendu                                            | Clé requise                                                |
-| -------------------- | ------------------------------------------------ | ---------------------------------------------------------- |
-| `offline` _(défaut)_ | ville réelle de l'IGN sur photographie aérienne  | aucune                                                     |
-| `ion`                | terrain mondial et bâtiments OpenStreetMap en 3D | token [Cesium ion](https://ion.cesium.com/tokens), gratuit |
-| `google`             | tuiles photoréalistes                            | clé Google Map Tiles API, **facturée à l'usage**           |
+| Réglage                 | Ville                                      | Coût                                             |
+| ----------------------- | ------------------------------------------ | ------------------------------------------------ |
+| aucun _(défaut)_        | dessinée d'après l'IGN, sur photo aérienne | aucun                                            |
+| `VITE_CESIUM_ION_TOKEN` | relevé 3D de Google, par Cesium ion        | [jeton](https://ion.cesium.com/tokens) gratuit   |
+| `VITE_GOOGLE_MAPS_KEY`  | relevé 3D de Google, directement           | clé Google Map Tiles API, **facturée à l'usage** |
 
-**Le mode `google` ne remplace pas les bâtiments de l'IGN.** Son maillage
-photogrammétrique est un seul bloc de géométrie : aucun bâtiment n'y est
-sélectionnable individuellement, donc aucun ne peut être coloré ni effondré. Les
-bâtiments de l'IGN restent posés par-dessus ; ce sont eux qui portent les
-dommages, le photoréalisme n'est que le décor.
+`?ville=dessinee` dans l'adresse impose la ville dessinée.
 
-Le mode `offline` pose la photographie aérienne de l'IGN (BD ORTHO®) sur la
+**La simulation reste sur les bâtiments de l'IGN** (`world/photoreal.ts`). Le
+relevé de Google est un seul bloc de géométrie : aucun bâtiment n'y est
+sélectionnable, donc aucun ne peut y être effondré. Il n'est qu'un décor,
+retouché là où un bâtiment change d'état : un bâtiment effondré ou éventré est
+effacé du relevé en suivant son contour IGN, et sa ruine est dessinée à sa
+place, la poussière retombant alentour ; un bâtiment incendié est noirci. Tout
+passe par une carte des ruines vue de dessus, que lit un shader posé sur le
+relevé. Le diagnostic, le fil de fer et le scan reviennent à la ville dessinée,
+où chaque bâtiment est un volume net.
+
+**Les altitudes.** L'IGN donne des altitudes au-dessus du niveau de la mer,
+Google des hauteurs au-dessus de l'ellipsoïde : à Mulhouse, 48,2 m d'écart,
+mesurés sur 49 points au sol en comparant les deux. Le relevé est abaissé
+d'autant.
+
+**Les conditions de Google** imposent d'afficher leur logo et leurs sources,
+même pour un usage personnel : c'est le bandeau discret au milieu du bas de
+l'écran — logos intacts, sources en petit et à demi effacées, nettes au
+survol —, qui reste visible quand l'interface est masquée. Elles interdisent
+aussi de stocker les tuiles, lues en continu.
+
+La ville dessinée pose la photographie aérienne de l'IGN (BD ORTHO®) sur la
 région, et l'imagerie mondiale Esri World Imagery au-delà (crédit : Esri, Maxar,
 Earthstar Geographics), avec OpenStreetMap en repli si la source est injoignable.
 L'imagerie Esri convient à un usage personnel ; un déploiement public

@@ -39,7 +39,8 @@
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm run build",
     "data:buildings": "node scripts/fetch-buildings.mjs",
     "data:relief": "node scripts/fetch-relief.mjs",
-    "data": "npm run data:buildings && npm run data:relief"
+    "data": "npm run data:buildings && npm run data:relief",
+    "model:drone": "node scripts/build-drone.mjs"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.21",

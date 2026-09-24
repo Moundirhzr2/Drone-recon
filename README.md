@@ -50,6 +50,14 @@ travaux peut s'y substituer sans toucher au reste.
   dessinées d'après l'époque, l'usage et la couverture que déclare l'IGN —
   volets, balcons, vitrines, tuiles, ardoises, terrasses — ; rendus réaliste,
   fil de fer et scan.
+- **Ville photoréaliste**, avec un jeton Cesium ion gratuit — le relevé 3D de
+  Google, celui de Google Earth, posé sur le relief de l'IGN. Les bâtiments
+  effondrés y sont effacés et remplacés par leur ruine — tas de gravats, pans de
+  murs cassés, murs mitoyens des voisins mis à nu, poussière alentour —, les
+  bâtiments incendiés noircis ; la simulation reste sur les données de l'IGN.
+- **Drone d'inspection** à la taille réelle — bras en carbone, hélices vrillées
+  qui tournent, nacelle de caméra, patins, feux de navigation —, généré par le
+  code en glTF.
 - **Pilotage gestuel** — suivi des deux mains par MediaPipe, disposition Mode 2
   des radiocommandes, gestes pour la photo et la bascule de vue.
 - **Instrumentation** — coordonnées GPS en haut à gauche, caméra verticale en
@@ -80,8 +88,18 @@ L'application s'ouvre sur <http://localhost:5173>. Aucune clé n'est nécessaire
 les bâtiments et le relief sont livrés avec le dépôt, et la photographie aérienne
 vient des services publics de l'IGN.
 
+Pour la ville photoréaliste : créer un compte gratuit sur
+[Cesium ion](https://ion.cesium.com), ajouter « Google Photorealistic 3D Tiles »
+à ses ressources depuis l'Asset Depot, puis copier le jeton dans un fichier
+`.env.local` à la racine (voir `.env.example`). Git ignore ce fichier. Pour
+revenir à la ville dessinée, ajouter `?ville=dessinee` à l'adresse.
+
 Le profil de qualité est choisi d'après la carte graphique. Pour l'imposer,
 ajouter `?qualite=fluide`, `?qualite=equilibre` ou `?qualite=beau` à l'adresse.
+
+Pour une visite guidée de trois minutes — la ville réelle, puis les quatre
+aléas —, ouvrir <http://localhost:5173/?demo>. N'importe quelle touche
+l'interrompt et rend les commandes.
 
 Pour piloter aux mains, appuyer sur `H`, autoriser la webcam, puis garder les deux
 mains ouvertes et immobiles pendant les trois secondes de calibrage.
@@ -97,6 +115,7 @@ mains ouvertes et immobiles pendant les trois secondes de calibrage.
 | `V`              | basculer entre vue brute et vue diagnostique              |
 | `M`              | changer de rendu : réaliste, fil de fer, scan             |
 | `C`              | vue embarquée ou caméra de suivi                          |
+| `I`              | masquer ou afficher l'interface (aussi par son bouton)    |
 | `H` / `K`        | activer le pilotage gestuel / le recalibrer               |
 | `Maj`            | stabiliser le drone                                       |
 | `R`              | retour au point de décollage                              |
@@ -191,9 +210,17 @@ l'eau.
 
 - **Le détecteur est simulé.** Il n'analyse pas l'image ; il bruite la vérité
   terrain. Son interface est prête pour un modèle réel, qui reste à entraîner.
-- **Les toits sont plats.** Chaque bâtiment est une extrusion de son contour :
-  la couverture de son toit est dessinée d'après l'IGN, mais pas sa pente, ni
-  la flèche du temple Saint-Étienne.
+- **Dans la ville dessinée, les toits sont plats.** Chaque bâtiment est une
+  extrusion de son contour : la couverture de son toit est dessinée d'après
+  l'IGN, mais pas sa pente, ni la flèche du temple Saint-Étienne. La ville
+  photoréaliste, elle, a les vrais toits.
+- **Dans la ville photoréaliste, les ruines restent dessinées.** Le relevé de
+  Google est une peau d'un seul tenant : un bâtiment effondré y est effacé et
+  remplacé par une ruine calculée, moins fine que le relevé qui l'entoure. Le
+  relevé déborde parfois du contour IGN : il en reste de loin en loin un bord
+  de toit voisin au-dessus d'un mur mitoyen. Des fissures ne s'y voient pas. Il
+  faut aussi une connexion Internet, et la ville est celle de la date des
+  prises de vue de Google.
 - **Le séisme triche sur l'échelle.** Sa profondeur focale est ramenée à 220 m
   pour que le gradient soit visible à l'échelle du quartier ; un vrai foyer
   frapperait la zone de façon uniforme.

@@ -30,8 +30,6 @@ export const IGN_ORTHO_WMTS =
 export interface World {
   viewer: Cesium.Viewer;
   scene: Cesium.Scene;
-  /** Vrai si un fond 3D externe (ion ou Google) a pu être chargé. */
-  hasExternalTileset: boolean;
   /** Message décrivant le fond réellement utilisé. */
   backendLabel: string;
   /** Moteur de rendu réellement employé par le navigateur. */
@@ -85,9 +83,9 @@ export async function createWorld(
     // Les altitudes de l'IGN sont des altitudes au-dessus du niveau de la mer,
     // pas des hauteurs au-dessus de l'ellipsoïde WGS84 qu'attend Cesium (l'écart
     // est d'environ 49 m en Alsace). Ce n'est pas un problème tant que le
-    // terrain, les bâtiments et le drone partagent la même référence — c'est
-    // le cas en mode hors-ligne. Les modes `ion` et `google`, qui apportent leur
-    // propre terrain, n'utilisent pas ce relief.
+    // terrain, les bâtiments et le drone partagent la même référence. La ville
+    // photoréaliste de Google, en hauteurs ellipsoïdales, est abaissée d'autant
+    // (voir `photoreal.ts`).
     terrainProvider: relief ? createReliefTerrain(relief) : new Cesium.EllipsoidTerrainProvider(),
   });
 
@@ -106,8 +104,7 @@ export async function createWorld(
   // de rendu. Dès qu'il y a un relief, il devient indispensable : sans lui, ce
   // qui passe sous le sol — la surface d'une inondation dans les quartiers
   // hauts, par exemple — resterait visible à travers.
-  globe.depthTestAgainstTerrain =
-    CONFIG.performance.depthTestTerrain || CONFIG.backend !== 'offline' || relief !== null;
+  globe.depthTestAgainstTerrain = CONFIG.performance.depthTestTerrain || relief !== null;
 
   // Le brouillard fond le lointain dans le ciel, et c'est lui qui borne la
   // distance de vue : Cesium ne charge ni ne dessine les tuiles entièrement
@@ -134,32 +131,14 @@ export async function createWorld(
 
   scene.light = new Cesium.DirectionalLight({ direction: sunDirection(215, 40), intensity: 2.1 });
 
-  let hasExternalTileset = false;
   let backendLabel = 'Hors-ligne (imagerie satellite)';
 
   // --- Fond de scène ----------------------------------------------------
   try {
-    if (CONFIG.backend === 'google' && CONFIG.googleKey) {
-      onProgress('Chargement des tuiles photoréalistes Google…', 0.35);
-      const tileset = await createGoogleTileset(CONFIG.googleKey);
-      scene.primitives.add(tileset);
-      hasExternalTileset = true;
-      backendLabel = 'Google Photorealistic 3D Tiles';
-    } else if (CONFIG.backend === 'ion' && CONFIG.ionToken) {
-      onProgress('Chargement du terrain et des bâtiments OSM…', 0.35);
-      viewer.terrainProvider = await Cesium.createWorldTerrainAsync();
-      const osm = await Cesium.createOsmBuildingsAsync();
-      scene.primitives.add(osm);
-      await addOsmImagery(viewer);
-      hasExternalTileset = true;
-      backendLabel = 'Cesium World Terrain + OSM Buildings';
-    } else {
-      onProgress('Chargement de l’imagerie satellite…', 0.35);
-      await addOsmImagery(viewer);
-    }
+    onProgress('Chargement de l’imagerie satellite…', 0.35);
+    await addOsmImagery(viewer);
   } catch (err) {
-    console.warn('[viewer] fond externe indisponible, repli hors-ligne', err);
-    await addOsmImagery(viewer).catch(() => undefined);
+    console.warn('[viewer] imagerie indisponible', err);
     backendLabel = 'Hors-ligne (repli)';
   }
 
@@ -167,7 +146,7 @@ export async function createWorld(
 
   const gpu = reportGpu(scene);
 
-  return { viewer, scene, hasExternalTileset, backendLabel, gpu };
+  return { viewer, scene, backendLabel, gpu };
 }
 
 /**
@@ -305,20 +284,4 @@ function tone(layer: Cesium.ImageryLayer): void {
   layer.brightness = 0.88;
   layer.saturation = 0.9;
   layer.contrast = 1.06;
-}
-
-/**
- * La signature de cette fabrique a changé entre versions de Cesium
- * (clé positionnelle puis options). On essaie les deux plutôt que d'imposer
- * une version précise.
- */
-async function createGoogleTileset(key: string): Promise<Cesium.Cesium3DTileset> {
-  const factory = Cesium.createGooglePhotorealistic3DTileset as unknown as (
-    ...args: unknown[]
-  ) => Promise<Cesium.Cesium3DTileset>;
-  try {
-    return await factory({ key });
-  } catch {
-    return await factory(key);
-  }
 }
