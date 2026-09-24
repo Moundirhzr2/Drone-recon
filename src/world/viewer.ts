@@ -18,6 +18,15 @@ import 'cesium/Build/Cesium/Widgets/widgets.css';
 import { CONFIG } from '../core/config';
 import { createReliefTerrain, type Relief } from './terrain';
 
+/**
+ * Tuiles de la photographie aérienne de l'IGN (BD ORTHO®), service WMTS de la
+ * Géoplateforme, dans le découpage « Web Mercator ».
+ */
+export const IGN_ORTHO_WMTS =
+  'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
+  '&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/jpeg' +
+  '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}';
+
 export interface World {
   viewer: Cesium.Viewer;
   scene: Cesium.Scene;
@@ -172,8 +181,8 @@ export async function createWorld(
  * choisit pas — l'ancien réglage tombait à 16° au-dessus de l'horizon, et les
  * ombres portées noyaient toutes les rues.
  *
- * Un après-midi, soleil au sud-ouest à 40° : des ombres assez longues pour
- * lire les volumes, assez courtes pour laisser voir le sol.
+ * Un après-midi, soleil au sud-ouest à 40° : assez bas pour que les façades
+ * se distinguent des toits, assez haut pour éclairer les rues.
  */
 function sunDirection(azimuth: number, elevation: number): Cesium.Cartesian3 {
   const a = Cesium.Math.toRadians(azimuth);
@@ -280,10 +289,7 @@ async function addOsmImagery(viewer: Cesium.Viewer): Promise<void> {
   // France, d'où le rectangle : on ne lui demande rien au-delà.
   const { lon, lat } = CONFIG.city;
   const ign = new Cesium.UrlTemplateImageryProvider({
-    url:
-      'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
-      '&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/jpeg' +
-      '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}',
+    url: IGN_ORTHO_WMTS,
     maximumLevel: 20,
     rectangle: Cesium.Rectangle.fromDegrees(lon - 0.35, lat - 0.25, lon + 0.35, lat + 0.25),
     credit: new Cesium.Credit('© IGN — BD ORTHO®'),

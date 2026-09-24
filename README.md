@@ -46,8 +46,10 @@ travaux peut s'y substituer sans toucher au reste.
 ## Fonctionnalités
 
 - **Ville réelle** — 2 282 bâtiments de la BD TOPO® extrudés depuis leur contour
-  exact, relief RGE ALTI®, photographie aérienne BD ORTHO® ; façades calculées à
-  l'échelle réelle, rendus réaliste, fil de fer et scan.
+  exact, relief RGE ALTI®, photographie aérienne BD ORTHO® ; façades et toitures
+  dessinées d'après l'époque, l'usage et la couverture que déclare l'IGN —
+  volets, balcons, vitrines, tuiles, ardoises, terrasses — ; rendus réaliste,
+  fil de fer et scan.
 - **Pilotage gestuel** — suivi des deux mains par MediaPipe, disposition Mode 2
   des radiocommandes, gestes pour la photo et la bascule de vue.
 - **Instrumentation** — coordonnées GPS en haut à gauche, caméra verticale en
@@ -60,7 +62,7 @@ travaux peut s'y substituer sans toucher au reste.
   (éclair, boule de feu, onde de choc, débris, colonne de fumée), incendies,
   poussière des effondrements, secousse du séisme.
 - **Qualité adaptée à la machine** — profil choisi d'après la carte graphique
-  (ombres portées, ciel, anticrénelage), puis cadence tenue en vol.
+  (définition, ciel et brume, anticrénelage), puis cadence tenue en vol.
 
 ## Démarrage rapide
 
@@ -116,7 +118,7 @@ diagnostic, deux poings fermés stabilisent le drone. Le détail est dans
     <td width="50%"><img alt="Vue diagnostique avec classification étiquetée" src="docs/images/02-diagnostic.jpg" /></td>
   </tr>
   <tr>
-    <td align="center"><sub>Place de la Réunion : bâtiments de l'IGN, ombres, relief réel</sub></td>
+    <td align="center"><sub>Place de la Réunion : bâtiments de l'IGN sur le relief réel</sub></td>
     <td align="center"><sub>Diagnostic : chaque bâtiment classé, identifié et situé</sub></td>
   </tr>
   <tr>
@@ -189,8 +191,9 @@ l'eau.
 
 - **Le détecteur est simulé.** Il n'analyse pas l'image ; il bruite la vérité
   terrain. Son interface est prête pour un modèle réel, qui reste à entraîner.
-- **Les toits sont plats.** Chaque bâtiment est une extrusion de son contour ;
-  les toits à pans, et la flèche du temple Saint-Étienne, ne sont pas modélisés.
+- **Les toits sont plats.** Chaque bâtiment est une extrusion de son contour :
+  la couverture de son toit est dessinée d'après l'IGN, mais pas sa pente, ni
+  la flèche du temple Saint-Étienne.
 - **Le séisme triche sur l'échelle.** Sa profondeur focale est ramenée à 220 m
   pour que le gradient soit visible à l'échelle du quartier ; un vrai foyer
   frapperait la zone de façon uniforme.

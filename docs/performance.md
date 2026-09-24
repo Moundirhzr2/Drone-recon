@@ -26,18 +26,19 @@ les valeurs absolues.
 Le profil est choisi au démarrage d'après la carte graphique que déclare le
 navigateur (`world/quality.ts`) :
 
-| Profil      | Pour                                        | Définition          | Sol | Ombres | Anticrénelage |
-| ----------- | ------------------------------------------- | ------------------- | --- | ------ | ------------- |
-| `fluide`    | circuits intégrés, rendu logiciel           | 75 % des points CSS | 6   | non    | non           |
-| `equilibre` | cartes dédiées d'entrée de gamme (GTX 16xx) | points CSS          | 4   | oui    | FXAA          |
-| `beau`      | cartes récentes (RTX, RX 6000 et plus)      | points physiques    | 2   | douces | MSAA × 4      |
+| Profil      | Pour                                        | Définition          | Sol | Anticrénelage |
+| ----------- | ------------------------------------------- | ------------------- | --- | ------------- |
+| `fluide`    | circuits intégrés, rendu logiciel           | 75 % des points CSS | 6   | non           |
+| `equilibre` | cartes dédiées d'entrée de gamme (GTX 16xx) | points CSS          | 4   | FXAA          |
+| `beau`      | cartes récentes (RTX, RX 6000 et plus)      | points physiques    | 2   | MSAA × 4      |
 
 Les deux profils riches ajoutent la brume au sol et un brouillard plus léger,
 qui recule l'horizon. Pour imposer un profil : `?qualite=fluide`,
 `?qualite=equilibre` ou `?qualite=beau` dans l'adresse, ou
 `performance.profile` dans `src/core/config.ts`.
 
-Coût d'une image sur la GTX 1650 Max-Q, vue de départ, médiane de trois passes :
+Coût d'une image sur la GTX 1650 Max-Q, vue de départ, médiane de trois passes —
+mesuré avec les ombres portées, désactivées depuis :
 
 | Profil      | Image      | Coût   |
 | ----------- | ---------- | ------ |
@@ -45,10 +46,13 @@ Coût d'une image sur la GTX 1650 Max-Q, vue de départ, médiane de trois passe
 | `equilibre` | 1536 × 742 | 12 ms  |
 | `beau`      | 1920 × 927 | 15 ms  |
 
-Les ombres, qu'on aurait crues chères, ne coûtent qu'environ 1 ms : la carte
-d'ombre ne couvre que 1,5 km autour de la caméra. La brume au sol coûte autant,
-FXAA la moitié. À cette définition, le MSAA × 4 ne coûte pas plus que FXAA — c'est
-pourquoi il est réservé au profil `beau`, qui rend aussi aux points physiques.
+Les ombres portées, qu'on aurait crues chères, ne coûtaient qu'environ 1 ms. Elles
+sont pourtant désactivées : la carte d'ombre de Cesium se recale à chaque
+mouvement de caméra, et ses bords scintillaient sur les façades pendant le vol.
+Le mécanisme reste en place — `shadows: true` dans `world/quality.ts` suffit à
+les rétablir. La brume au sol coûte environ 1 ms, FXAA la moitié. À cette
+définition, le MSAA × 4 ne coûte pas plus que FXAA — c'est pourquoi il est
+réservé au profil `beau`, qui rend aussi aux points physiques.
 
 **La lumière compte autant que les réglages.** Le soleil était donné par un
 vecteur écrit directement en coordonnées terrestres, et tombait sans qu'on le
@@ -66,8 +70,8 @@ plus de pixels** qu'un petit panneau de test. Le simulateur vise donc une cadenc
 
 1. il ajuste d'abord l'échelle de rendu, entre 0,4 et 1 ;
 2. si la cadence manque encore à l'échelle minimale, il coupe une option, la plus
-   chère d'abord : ombres, puis MSAA, brume au sol, FXAA. Le pilote en est
-   averti dans le panneau de pilotage.
+   chère d'abord : les ombres si on les a réactivées, puis le MSAA, la brume au
+   sol, FXAA. Le pilote en est averti dans le panneau de pilotage.
 
 Il ne rétablit jamais une option coupée : mieux vaut une image un peu moins riche
 qu'une qualité qui clignote. L'ajustement a lieu au plus toutes les deux
@@ -82,7 +86,7 @@ Chaque décision est journalisée :
 ```
 [qualité] profil equilibre (ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 with Max-Q Design …))
 [perf] 22 img/s — échelle de rendu 0.75 -> 0.65
-[perf] 31 img/s à l'échelle minimale — ombres coupées
+[perf] 31 img/s à l'échelle minimale — brume au sol coupée
 ```
 
 Pour désactiver le régulateur : `performance.adaptiveResolution: false`. Si

@@ -4,8 +4,9 @@
  * DEUX ÉTAGES
  * -----------
  * 1. Au démarrage, un PROFIL est choisi d'après la carte graphique déclarée par
- *    le navigateur : on ne demande pas des ombres à un circuit intégré, et on ne
- *    bride pas une carte dédiée à la qualité d'un portable d'entrée de gamme.
+ *    le navigateur : on ne demande pas d'anticrénelage à un circuit intégré, et
+ *    on ne bride pas une carte dédiée à la qualité d'un portable d'entrée de
+ *    gamme.
  *
  * 2. En vol, un RÉGULATEUR tient la cadence. Il joue d'abord sur l'échelle de
  *    rendu, le levier le plus fin ; si la cadence manque encore à l'échelle
@@ -56,7 +57,12 @@ export interface QualitySettings {
   fxaa: boolean;
   /** Anticrénelage matériel : net, mais multiplie le coût des pixels. */
   msaa: 1 | 2 | 4;
-  /** Ombres portées du soleil. */
+  /**
+   * Ombres portées du soleil. Désactivées dans tous les profils : la carte
+   * d'ombre de Cesium est recalculée à chaque mouvement de caméra, et sur les
+   * façades ses bords scintillaient pendant le vol. Le reste du mécanisme est
+   * en place : passer ce réglage à `true` suffit à les rétablir.
+   */
   shadows: boolean;
   /** Bords d'ombre adoucis (filtrage sur plusieurs échantillons). */
   softShadows: boolean;
@@ -82,8 +88,8 @@ const PROFILES: Record<QualityName, QualitySettings> = {
     shadows: false,
     softShadows: false,
   },
-  // Cartes dédiées d'entrée de gamme (GTX 16xx, RX 5xx…) : les ombres, qui
-  // donnent la lecture des volumes, mais pas l'anticrénelage matériel.
+  // Cartes dédiées d'entrée de gamme (GTX 16xx, RX 5xx…) : la brume et le
+  // lissage, mais pas l'anticrénelage matériel.
   equilibre: {
     resolutionScale: 1,
     nativeResolution: false,
@@ -93,10 +99,10 @@ const PROFILES: Record<QualityName, QualitySettings> = {
     fogDensity: 0.00022,
     fxaa: true,
     msaa: 1,
-    shadows: true,
+    shadows: false,
     softShadows: false,
   },
-  // Cartes récentes : définition native, ombres douces, arêtes nettes.
+  // Cartes récentes : définition native, sol plus fin, arêtes nettes.
   beau: {
     resolutionScale: 1,
     nativeResolution: true,
@@ -106,7 +112,7 @@ const PROFILES: Record<QualityName, QualitySettings> = {
     fogDensity: 0.00016,
     fxaa: false,
     msaa: 4,
-    shadows: true,
+    shadows: false,
     softShadows: true,
   },
 };
@@ -203,6 +209,14 @@ export class QualityGovernor {
     const perf = CONFIG.performance;
     if (!perf.adaptiveResolution || now - this.lastCheck < 2000 || fps <= 0) return null;
     this.lastCheck = now;
+
+    // Sous 5 images par seconde, ce n'est pas la charge : c'est le navigateur
+    // qui a mis la page en veille — onglet en arrière-plan, fenêtre couverte,
+    // panneau replié. Il ralentit alors volontairement ses images, et régler la
+    // qualité sur cette cadence la dégraderait pour rien ; pour de bon, même,
+    // puisque les options coupées ne reviennent pas. Mesuré dans un panneau
+    // masqué : 4 images par seconde, sur une machine qui en tient soixante.
+    if (document.hidden || fps < 5) return null;
     const target = perf.targetFps;
 
     if (fps < target * 0.8) {

@@ -29,11 +29,15 @@ import { DAMAGE_INFO, standingHeight, type Building, type BuildingKind } from '.
 import type { City } from './city';
 import {
   createFacadeAppearance,
+  FACADE_KIND,
   footprintOutline,
   footprintRoof,
   footprintWalls,
+  ROOF_CODE,
   SURFACE,
   texturedBox,
+  type FacadeVariant,
+  type RoofVariant,
 } from './facade';
 
 /** Modes de rendu, cyclés par la touche M. */
@@ -58,19 +62,109 @@ const CHUNK = 100;
  */
 const REBUILDS_PER_FRAME = 1;
 
-/** Teintes de façade, par usage. Volontairement désaturées. */
-const WALL_TINTS: Record<BuildingKind, string[]> = {
-  residentiel: ['#b9ac97', '#a89a86', '#c6b9a4', '#9d9484', '#c9bfae'],
-  commerce: ['#c2b6a6', '#b0a394', '#bdae9c'],
-  bureau: ['#9fa8ad', '#8e979c', '#adb5b9'],
-  industriel: ['#8c8e88', '#7d827c', '#9a9c94'],
-  civique: ['#c8bda8', '#bdb098', '#d2c8b4'],
+/**
+ * Enduits de façade, par époque.
+ *
+ * La vieille ville de Mulhouse est un nuancier : ocres, roses, crèmes et
+ * jaunes paille, souvent rehaussés de grès. Les immeubles d'après-guerre sont
+ * plus sages, les récents franchement gris. Les teintes restent un peu sourdes :
+ * l'éclairage de Cesium éclaircit d'environ moitié une façade tournée vers la
+ * caméra.
+ */
+const PLASTERS: Record<0 | 1 | 2, string[]> = {
+  0: ['#cdb58a', '#c7a57e', '#cba99a', '#c4917b', '#d4c9b1', '#bfb4a1', '#cdbf8b', '#b8a58b'],
+  1: ['#c3beb2', '#bbb2a1', '#cbc5b6', '#aea79b', '#c4b89f', '#b7bab6'],
+  2: ['#c5c5c1', '#b4b8ba', '#a7abad', '#cfccc5', '#9c9fa1', '#bdb9af'],
+};
+
+/** Matériaux propres à certains usages, quelle que soit l'époque. */
+const SPECIAL_WALLS: Partial<Record<BuildingKind, string[]>> = {
+  industriel: ['#9a816d', '#858a8e', '#a08c78'],
   // Le grès rose des Vosges : c'est celui du temple Saint-Étienne et de la
   // plupart des édifices anciens de la région.
   religieux: ['#b98a7a', '#a87c6e'],
-  annexe: ['#8f8a82', '#7f7b74', '#9a958c'],
-  sportif: ['#a3a9ab', '#949a9c'],
+  annexe: ['#a8a094', '#978f84', '#b2a898'],
+  sportif: ['#b9bcbd', '#a9adaf'],
 };
+
+/**
+ * Couvertures, par matériau. Les tuiles de terre cuite dominent la vieille
+ * ville ; ardoises et zinc coiffent les immeubles bourgeois ; les terrasses
+ * gravillonnées, les immeubles récents.
+ */
+const ROOF_TINTS_BY_CODE: Record<number, string[]> = {
+  [ROOF_CODE.tuiles]: ['#8e503b', '#7f4636', '#98593f', '#744132', '#88513e', '#9c624a'],
+  [ROOF_CODE.ardoises]: ['#51575e', '#5a6067', '#4b5057'],
+  [ROOF_CODE.metal]: ['#8b9297', '#7f878d', '#979da1'],
+  [ROOF_CODE.beton]: ['#8f8b83', '#86827b', '#98948c', '#7e7a73'],
+  [ROOF_CODE.verre]: ['#3d4751'],
+};
+
+/**
+ * Couverture d'un bâtiment : son matériau déclaré par l'IGN, et sa forme — en
+ * pente si le faîte dépasse la gouttière d'au moins un mètre. Quand le matériau
+ * manque (deux bâtiments sur trois), on le déduit : une terrasse est en béton,
+ * un grand volume industriel en bac acier, et un toit en pente est en tuiles,
+ * sauf un sur sept, en ardoises.
+ */
+function roofOf(b: Building, seed: number): RoofVariant {
+  const pitched = (b.roofPitch ?? (eraOf(b.year) < 2 ? 3 : 0)) >= 1;
+  let code: number;
+  switch (b.roofMaterial) {
+    case 'tuiles':
+      code = ROOF_CODE.tuiles;
+      break;
+    case 'ardoises':
+      code = ROOF_CODE.ardoises;
+      break;
+    case 'metal':
+      code = ROOF_CODE.metal;
+      break;
+    case 'beton':
+      code = ROOF_CODE.beton;
+      break;
+    case 'verre':
+      code = ROOF_CODE.verre;
+      break;
+    default:
+      if (!pitched) code = ROOF_CODE.beton;
+      else if (b.kind === 'industriel' || b.kind === 'sportif') code = ROOF_CODE.metal;
+      else code = seed < 0.15 ? ROOF_CODE.ardoises : ROOF_CODE.tuiles;
+  }
+  return [code + (pitched ? 10 : 0), seed];
+}
+
+/** Époque de construction, lue par le shader de façade. */
+function eraOf(year: number): 0 | 1 | 2 {
+  return year < 1914 ? 0 : year < 1975 ? 1 : 2;
+}
+
+/** Nombre entre 0 et 1, stable pour un identifiant donné. */
+function hash01(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619) >>> 0;
+  return (h % 10007) / 10007;
+}
+
+/**
+ * Style de façade : époque, usage, graine, commerces au rez-de-chaussée. Un
+ * immeuble d'habitation ancien ou d'après-guerre d'au moins trois niveaux a
+ * une chance sur deux d'avoir des boutiques en pied : c'est la règle, plus que
+ * l'exception, dans le centre de Mulhouse.
+ */
+function facadeVariant(b: Building): FacadeVariant {
+  const era = eraOf(b.year);
+  const seed = hash01(b.id);
+  const shop =
+    b.kind === 'commerce' || (b.kind === 'residentiel' && era < 2 && b.height >= 9 && seed < 0.5)
+      ? 1
+      : 0;
+  return [era, FACADE_KIND[b.kind], seed, shop];
+}
+
+function wallTint(b: Building): string {
+  return hashPick(b.id, SPECIAL_WALLS[b.kind] ?? PLASTERS[eraOf(b.year)]);
+}
 
 const ROOF_TINTS = ['#7a4a3c', '#6b5a52', '#5c5f63', '#8a5443', '#4f5358', '#7c5140'];
 const RUBBLE = '#6b6459';
@@ -133,6 +227,8 @@ export class BuildingRenderer {
   private chunkOf = new Map<string, Chunk>();
   private mode: RenderMode = 'realiste';
   private diagnostic = false;
+  /** Densité du brouillard hors vue scan, fixée par le profil de qualité. */
+  private fogBeforeScan: number | null = null;
   private appearance = createFacadeAppearance();
 
   constructor(
@@ -245,7 +341,15 @@ export class BuildingRenderer {
     }
     if (sky) sky.show = !scan;
     globe.baseColor = Cesium.Color.fromCssColorString(scan ? '#04080c' : '#1b2a1f');
-    this.scene.fog.density = scan ? 0.0004 : 0.00012;
+    // Brouillard plus dense en scan, puis celui du profil de qualité au retour.
+    const fog = this.scene.fog;
+    if (scan && this.fogBeforeScan === null) {
+      this.fogBeforeScan = fog.density;
+      fog.density = 0.0004;
+    } else if (!scan && this.fogBeforeScan !== null) {
+      fog.density = this.fogBeforeScan;
+      this.fogBeforeScan = null;
+    }
 
     for (const chunk of this.chunks.values()) {
       if (chunk.solid) chunk.solid.show = mode === 'realiste';
@@ -326,11 +430,13 @@ export class BuildingRenderer {
     const burnt = b.state === 'burnt';
     const ruined = b.state === 'collapsed' || b.state === 'partial';
 
-    let wall = hashPick(b.id, WALL_TINTS[b.kind]);
+    let wall = wallTint(b);
     if (burnt) wall = BURNT;
     else if (b.state === 'collapsed') wall = RUBBLE;
     else if (b.state === 'partial') wall = '#8f8577';
-    const roof = burnt ? '#1c1916' : ruined ? RUBBLE : hashPick(b.id + 'r', ROOF_TINTS);
+    const roofVariant = roofOf(b, hash01(b.id + 'r'));
+    const roofTints = b.footprint ? ROOF_TINTS_BY_CODE[roofVariant[0] % 10] : ROOF_TINTS;
+    const roof = burnt ? '#1c1916' : ruined ? RUBBLE : hashPick(b.id + 'r', roofTints);
 
     // Un bâtiment éventré n'a plus de trame de fenêtres lisible : on lui donne
     // la surface d'une ruine, pas celle d'une façade. Un bâtiment incendié, lui,
@@ -339,13 +445,31 @@ export class BuildingRenderer {
     const roofStyle = ruined || burnt ? SURFACE.rubble : SURFACE.roof;
 
     if (b.footprint) {
-      // Bâtiment réel : son contour exact, posé sur son altitude IGN.
+      // Bâtiment réel : son contour exact, posé sur son altitude IGN, et sa
+      // couverture réelle tant qu'il est debout.
       const frame = localFrame(b.lon, b.lat, b.baseHeight);
+      const variant = facadeVariant(b);
       parts.push(
-        this.part(`${b.id}:body`, b, footprintWalls(b.footprint, h, wallStyle), frame, wall, () =>
-          footprintOutline(b.footprint!, h),
+        this.part(
+          `${b.id}:body`,
+          b,
+          footprintWalls(b.footprint, h, wallStyle, variant),
+          frame,
+          wall,
+          () => footprintOutline(b.footprint!, h),
         ),
-        this.part(`${b.id}:roof`, b, footprintRoof(b.footprint, h, roofStyle), frame, roof),
+        this.part(
+          `${b.id}:roof`,
+          b,
+          footprintRoof(
+            b.footprint,
+            h,
+            roofStyle === SURFACE.roof ? SURFACE.roofReal : roofStyle,
+            roofVariant,
+          ),
+          frame,
+          roof,
+        ),
       );
     } else {
       // Bâtiment généré : une boîte, et une toiture légèrement débordante qui
@@ -356,7 +480,7 @@ export class BuildingRenderer {
         this.part(
           `${b.id}:body`,
           b,
-          texturedBox(dims, wallStyle, (b.width + b.depth) / 2, h),
+          texturedBox(dims, wallStyle, (b.width + b.depth) / 2, h, facadeVariant(b)),
           bodyFrame,
           wall,
           () =>

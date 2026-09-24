@@ -27,6 +27,7 @@ import {
   computeVulnerability,
   type Building,
   type BuildingKind,
+  type RoofMaterial,
   type WallMaterial,
 } from './buildings';
 import { seedInitialDamage, type City, type DamageFocus } from './city';
@@ -41,6 +42,7 @@ interface RawBuilding {
   use: string | null;
   year: number | null;
   walls: string | null;
+  roof: string | null;
   ground: number | null;
   light: boolean;
   rings: Array<Array<[number, number]>>;
@@ -211,6 +213,31 @@ function wallsOf(code: string | null): WallMaterial {
   }
 }
 
+/**
+ * Matériau de couverture. Le code IGN tient sur deux chiffres, matériau
+ * principal puis secondaire ; un principal « indéterminé » (0) laisse parler le
+ * secondaire.
+ */
+function roofOf(code: string | null): RoofMaterial {
+  const digit = code?.[0] === '0' ? code[1] : code?.[0];
+  switch (digit) {
+    case '1':
+      return 'tuiles';
+    case '2':
+      return 'ardoises';
+    case '3':
+      return 'metal';
+    case '4':
+      return 'beton';
+    case '5':
+      return 'verre';
+    case '9':
+      return 'autre';
+    default:
+      return 'inconnu';
+  }
+}
+
 function labelOf(kind: BuildingKind, floors: number): string {
   switch (kind) {
     case 'residentiel':
@@ -306,6 +333,10 @@ export async function loadRealCity(
       yearKnown: raw.year != null,
       walls,
       light: raw.light,
+      roofMaterial: roofOf(raw.roof),
+      // Faîte moins gouttière : c'est la hauteur du toit, nulle pour une terrasse.
+      roofPitch:
+        raw.ridge != null && raw.eaves != null ? Math.max(0, raw.ridge - raw.eaves) : undefined,
       area,
       footprint,
       vulnerability: 0,

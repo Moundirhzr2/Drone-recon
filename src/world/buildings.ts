@@ -73,6 +73,10 @@ export type BuildingKind =
 export type WallMaterial =
   'pierre' | 'meuliere' | 'beton' | 'brique' | 'agglomere' | 'bois' | 'autre' | 'inconnu';
 
+/** Matériau de couverture, tel que le déclare la BD TOPO®. */
+export type RoofMaterial =
+  'tuiles' | 'ardoises' | 'metal' | 'beton' | 'verre' | 'autre' | 'inconnu';
+
 export interface Building {
   id: string;
   name: string;
@@ -126,6 +130,10 @@ export interface Building {
   walls?: WallMaterial;
   /** Construction légère (abri, appentis, structure provisoire). */
   light?: boolean;
+  /** Matériau de couverture, quand la source le précise. */
+  roofMaterial?: RoofMaterial;
+  /** Hauteur du toit, du faîte à la gouttière, en mètres : 0 pour une terrasse. */
+  roofPitch?: number;
   /** Vrai si l'année vient de la source ; faux si elle a été déduite des voisins. */
   yearKnown?: boolean;
   /** Identifiant dans la base d'origine, pour pouvoir remonter à la donnée. */

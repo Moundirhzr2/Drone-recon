@@ -73,6 +73,13 @@ L'usage (logement, commerce, culte, annexe…) et le caractère léger de la
 construction entrent aussi en compte. Le calcul complet est dans
 `computeVulnerability` (`world/buildings.ts`).
 
+**Toitures.** La BD TOPO® déclare le matériau de couverture — tuiles, ardoises,
+métal, béton, verre — pour un bâtiment sur trois, et, par l'écart entre la
+hauteur du faîte et celle de la gouttière, la forme du toit : 1 952 toits en
+pente, 264 terrasses. Le rendu s'en sert pour dessiner chaque couverture ; quand
+le matériau manque, une terrasse est en béton gravillonné et un toit en pente
+en tuiles, parfois en ardoises.
+
 ## Corrections
 
 Une seule hauteur est corrigée à la main : la **tour de l'Europe**, à qui la

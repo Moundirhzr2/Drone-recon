@@ -87,7 +87,8 @@ export const CONFIG = {
   performance: {
     /**
      * Profil de qualité. 'auto' le choisit d'après la carte graphique : une
-     * carte dédiée a droit aux ombres, un circuit intégré passe en 'fluide'.
+     * carte dédiée a droit à la brume et au lissage, un circuit intégré passe en
+     * 'fluide'.
      * On peut aussi le forcer depuis l'URL : `?qualite=beau`.
      */
     profile: 'auto' as 'auto' | QualityName,

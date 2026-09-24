@@ -129,11 +129,34 @@ par usage, états de dommage, et surtout la vue diagnostique qui recolore les
 bâtiments un par un. Le shader garde donc cette couleur et la multiplie par le
 motif.
 
-Quatre surfaces sont reconnues — façade, toiture, gravats et façade incendiée,
-aux baies vides et noircies de suie — et la vue diagnostique repasse en aplat,
-parce qu'une trame de fenêtres sous une couleur de classification brouillerait
-la lecture. Les vitrages reflètent le ciel, plus ou moins clair d'une fenêtre à
-l'autre ; une sur cinq a ses rideaux tirés.
+**Une façade par époque.** Le shader reçoit, pour chaque bâtiment, son époque
+de construction, son usage et une graine tirés de la BD TOPO®. Avant 1914 :
+enduits pastel, encadrements de pierre, volets battants, bandeaux d'étage,
+chaînages d'angle — la vieille ville de Mulhouse. De 1914 à 1974 : volets
+roulants plus ou moins baissés, balcons. Après 1974 : bandeaux vitrés, et
+murs-rideaux pour les bureaux. Les immeubles commerçants ont leurs vitrines et
+leurs enseignes au rez-de-chaussée, l'édifice religieux ses baies en plein
+cintre. Les vitrages reflètent le ciel d'autant plus qu'on les regarde de biais.
+
+**Une toiture par couverture.** La BD TOPO® déclare aussi le matériau de
+couverture et, par l'écart entre faîte et gouttière, la forme du toit : tuiles
+en rangs décalés, ardoises, zinc à joints debout, terrasse gravillonnée avec
+ses édicules techniques, verrière. Quand le matériau manque, il est déduit de
+la forme. Les rangs de tuiles suivent le plus grand côté du toit, comme une
+ligne d'égout.
+
+**Des motifs filtrés.** Un motif calculé n'a pas de mipmaps : quand une fenêtre
+ou un rang de tuiles ne couvre plus que quelques pixels, il saute d'un pixel à
+l'autre au moindre mouvement et la ville scintille. Chaque motif se fond donc
+vers sa teinte moyenne à mesure qu'il rétrécit à l'écran, et chaque bord est
+lissé sur un pixel. Les valeurs propres à un bâtiment sont arrondies avant tout
+tirage au sort : interpolées d'un pixel à l'autre avec d'infimes écarts, elles
+faisaient tirer à chaque pixel une valeur différente.
+
+Six surfaces sont reconnues — façade, toiture, gravats, façade incendiée aux
+baies vides et noircies de suie, toiture réelle, aplat — et la vue diagnostique
+repasse en aplat, parce qu'une trame de fenêtres sous une couleur de
+classification brouillerait la lecture.
 
 Les bâtiments réels sont extrudés depuis leur contour IGN : un mur par arête, dont
 les coordonnées de texture suivent la longueur réelle, et un toit triangulé par
