@@ -13,7 +13,7 @@
   <img alt="MediaPipe" src="https://img.shields.io/badge/MediaPipe-Hands-0097a7" />
 </p>
 
-![Interface complète après un séisme : télémétrie, drone en troisième personne, classification des dommages, caméra nadir, bilan du simulateur](docs/images/00-interface.jpg)
+![Interface complète après une explosion, sur la ville photoréaliste : télémétrie, drone en troisième personne, caméra nadir, bilan du simulateur](docs/images/00-interface.jpg)
 
 Un drone survole le centre réel de Mulhouse, autour de la place de la Réunion :
 2 282 bâtiments reconstitués depuis les données de l'IGN, posés sur le relief et
@@ -142,7 +142,7 @@ diagnostic, deux poings fermés stabilisent le drone. Le détail est dans
     <td width="50%"><img alt="Vue diagnostique avec classification étiquetée" src="docs/images/02-diagnostic.jpg" /></td>
   </tr>
   <tr>
-    <td align="center"><sub>Place de la Réunion : bâtiments de l'IGN sur le relief réel</sub></td>
+    <td align="center"><sub>Place de la Réunion : le relevé 3D de Google sur le relief de l'IGN</sub></td>
     <td align="center"><sub>Diagnostic : chaque bâtiment classé, identifié et situé</sub></td>
   </tr>
   <tr>
@@ -162,11 +162,11 @@ diagnostic, deux poings fermés stabilisent le drone. Le détail est dans
     <td align="center"><sub>Deux secondes plus tard : nuage, débris, premiers feux</sub></td>
   </tr>
   <tr>
-    <td><img alt="Crue remplissant le point bas du relief" src="docs/images/09-inondation.jpg" /></td>
+    <td><img alt="Inondation près de la gare : l'eau boueuse remplit les rues" src="docs/images/09-inondation.jpg" /></td>
     <td><img alt="Incendie propagé sous le vent" src="docs/images/10-incendie.jpg" /></td>
   </tr>
   <tr>
-    <td align="center"><sub>Crue de 3 m : l'eau remplit d'abord le point bas du relief</sub></td>
+    <td align="center"><sub>Inondation : l'eau monte à niveau plat et remplit les points bas (relevé 3D : Google)</sub></td>
     <td align="center"><sub>Incendie poussé par le vent de sud-ouest</sub></td>
   </tr>
   <tr>

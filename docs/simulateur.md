@@ -203,7 +203,9 @@ par le relief : là où le sol est plus haut que l'eau, le test de profondeur la
 cache. Elle est boueuse — une crue charrie la terre qu'elle arrache — et reflète
 le ciel quand on la regarde de biais, comme toute eau (facteur de Fresnel).
 
-![Une crue de 3 m remplit d'abord le point bas du relief](images/09-inondation.jpg)
+![Une inondation près de la gare : l'eau monte à niveau plat et remplit les points bas](images/09-inondation.jpg)
+
+_Inondation près de la gare. Relevé 3D : Google._
 
 **Séisme.** Les effondrements soulèvent un nuage de poussière, et la caméra
 tremble. Cette secousse est une convention empruntée au cinéma : un drone en vol

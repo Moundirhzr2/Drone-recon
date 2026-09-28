@@ -1,6 +1,6 @@
 # Diagnostic des dommages
 
-![Vue diagnostique : effondrés en rouge, partiels en orange, fissurés en jaune](images/02-diagnostic.jpg)
+![Vue diagnostique après un séisme : effondrés en rouge, partiels en orange, fissurés en jaune, incendiés en violet](images/02-diagnostic.jpg)
 
 ## Vue brute et vue diagnostique
 

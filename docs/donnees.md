@@ -11,7 +11,7 @@ de l'[IGN](https://www.ign.fr), sous
 | Relief         | RGE ALTI®   | 121 × 121 altitudes au pas de 10 m, sur 1,2 km de côté | `public/data/mulhouse-relief.json`      |
 | Photo aérienne | BD ORTHO®   | le sol vu du ciel, à 20 cm environ                     | chargée en ligne, service WMTS de l'IGN |
 
-![Le centre de Mulhouse reconstitué depuis les données de l'IGN](images/01-survol.jpg)
+![Le centre de Mulhouse reconstitué depuis les données de l'IGN : la ville dessinée, autour du temple Saint-Étienne](images/11-ville-ign.jpg)
 
 ## Pourquoi des fichiers figés
 
