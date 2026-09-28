@@ -23,6 +23,7 @@ les valeurs absolues.
 | Découpes du relevé (ville réelle)    | 12 ms de processeur par image : 30 images/s      | carte des ruines lue par un shader : 58 images/s |
 | Globe de l'IGN sous le relevé        | 6 ms par image, pour les seules découpes         | masqué, une nappe en tient lieu : 19,5 → 13 ms   |
 | Murs mitoyens d'une ruine            | jusqu'à 100 ms pour une seule ruine              | côtés voisins filtrés : 3,3 ms au plus           |
+| Transparence sous la fumée           | 15,6 images/s au début d'une explosion           | triée plutôt qu'« indépendante » : 22 images/s   |
 
 ## Profils de qualité
 
@@ -362,6 +363,34 @@ chaque image, 300 images (5 s) :
 | Budget de 3 ms, globe dessiné            | 32,4 ms | 44,6 ms     | 74 ms       |
 | Globe masqué, murs mitoyens encore lents | 21 ms   | 30,9 ms     | 132 ms      |
 
-La dernière ligne reste à remesurer avec les murs mitoyens corrigés : Chrome
-gèle un onglet masqué qui calcule beaucoup, et les mesures suivantes n'ont pas
-pu aller au bout.
+Ces mesures-là attendent la carte graphique à chaque image, fenêtre masquée :
+elles comparent des réglages entre eux, pas la fluidité vécue. Chrome gèle
+d'ailleurs un onglet masqué qui calcule beaucoup, et les mesures longues n'y
+vont plus au bout.
+
+**Fenêtre visible**, murs mitoyens corrigés, GTX 1650 Max-Q, 1 536 × 742,
+profil équilibré, régulateur coupé ; le drone à 80 m, à 130 m de l'explosion :
+
+| Moment                                 | Images/s     | Images de plus de 50 ms |
+| -------------------------------------- | ------------ | ----------------------- |
+| Ville immobile, avant                  | 60           | 0                       |
+| Explosion, 8 premières secondes        | 31 (méd. 30) | 25 sur 251              |
+| Juste après, incendies en cours        | 19           | 40 sur 96               |
+| Juste après, fumée et flammes masquées | 43           | 7 sur 171               |
+
+Après l'explosion, ce ne sont plus les ruines qui pèsent mais la fumée : de
+grands sprites translucides, jusqu'à une centaine de mètres. Cesium les dessine
+par défaut avec sa transparence « indépendante de l'ordre », dont les tampons
+en virgule flottante coûtent cher sur de si grandes surfaces. Coupée
+(`orderIndependentTranslucency: false`, dans `world/viewer.ts`), sans
+différence visible, sur deux explosions rejouées à l'identique :
+
+| Transparence                 | 6 premières secondes | 6 suivantes |
+| ---------------------------- | -------------------- | ----------- |
+| Indépendante de l'ordre      | 15,6 images/s        | 20,8        |
+| Triée (par défaut désormais) | 22                   | 28          |
+
+Pistes suivantes : alléger la fumée de l'explosion (moins de sprites, moins
+grands), et regrouper les ruines d'un carreau en une seule primitive une fois
+la vague passée — 231 ruines font autant d'appels de dessin. En usage normal,
+le régulateur baisse aussi la définition pendant le pic.

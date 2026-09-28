@@ -77,6 +77,13 @@ export async function createWorld(
         alpha: false,
       },
     },
+    // Transparence « indépendante de l'ordre » coupée. Elle ne sert qu'aux
+    // particules des désastres et à l'eau d'une crue, qui s'en passent sans
+    // différence visible, et ses tampons en virgule flottante pesaient lourd
+    // sous les grandes fumées d'une explosion. Fenêtre visible, GTX 1650, ville
+    // photoréaliste : de 15,6 à 22 images/s dans les six premières secondes,
+    // de 20,8 à 28 dans les six suivantes.
+    orderIndependentTranslucency: false,
     // Relief réel de l'IGN, livré avec l'application : aucune dépendance réseau
     // au démarrage. Sans lui, on retombe sur un globe plat.
     //
