@@ -10,7 +10,6 @@
 
 import { CONFIG } from '../core/config';
 import { makeRandom, metersToDegrees } from '../core/math';
-import { severityFromStress, stateFromStress, stressOf } from './fragility';
 import {
   computeVulnerability,
   type Building,
@@ -117,21 +116,6 @@ export interface City {
   attribution?: string;
 }
 
-/** Foyer de dégâts initiaux, en mètres depuis le centre-ville. */
-export interface DamageFocus {
-  east: number;
-  north: number;
-  radius: number;
-  intensity: number;
-  fire: boolean;
-}
-
-/** Foyers de la ville générée, calibrés pour ses ~80 bâtiments épars. */
-const GENERATED_FOCI: DamageFocus[] = [
-  { east: 120, north: 90, radius: 185, intensity: 1.45, fire: false },
-  { east: -210, north: -150, radius: 150, intensity: 1.55, fire: true },
-];
-
 /** Convertit une position locale en mètres (est, nord) en coordonnées géographiques. */
 function place(east: number, north: number) {
   const { dLon, dLat } = metersToDegrees(east, north, CONFIG.city.lat);
@@ -163,7 +147,8 @@ function makeDebris(rnd: () => number, b: Building, intensity: number) {
 
 /**
  * Applique un état de dommage à un bâtiment, débris compris.
- * Sert aussi bien à la génération initiale qu'au simulateur de désastres.
+ * La ville démarre intacte : seul le simulateur de désastres l'endommage, et
+ * toujours par cette fonction.
  */
 export function setDamage(
   b: Building,
@@ -293,60 +278,9 @@ export function generateCity(): City {
     }
   }
 
-  // --- Dommages initiaux ------------------------------------------------
-  seedInitialDamage(buildings, rnd);
-
   return {
     buildings,
     center: { lon: CONFIG.city.lon, lat: CONFIG.city.lat },
     ground,
   };
-}
-
-/**
- * Pré-endommage une partie du bâti.
- *
- * Les dégâts ne sont pas saupoudrés au hasard sur toute la carte : ils sont
- * groupés autour de deux foyers, parce que c'est ainsi qu'un sinistre réel se
- * présente. Cela donne aussi au pilote quelque chose à chercher — une zone à
- * retrouver plutôt qu'un semis uniforme.
- */
-export function seedInitialDamage(
-  buildings: Building[],
-  rnd: () => number,
-  foyers: DamageFocus[] = GENERATED_FOCI,
-): void {
-  // Intensités calibrées sur la courbe de fragilité : au centre d'un foyer,
-  // `intensité × vulnérabilité` doit franchir le seuil d'effondrement (0.52),
-  // et retomber sous le seuil de fissuration (0.18) aux trois quarts du rayon.
-  // Avec une vulnérabilité moyenne autour de 0,55, il faut viser ~1,4.
-
-  for (const b of buildings) {
-    const { dLon, dLat } = metersToDegrees(1, 1, CONFIG.city.lat);
-    const east = (b.lon - CONFIG.city.lon) / dLon;
-    const north = (b.lat - CONFIG.city.lat) / dLat;
-
-    let worst = 0;
-    let fromFire = false;
-    for (const f of foyers) {
-      const dist = Math.hypot(east - f.east, north - f.north);
-      if (dist > f.radius) continue;
-      // Atténuation quadratique avec la distance au foyer.
-      const local = f.intensity * Math.pow(1 - dist / f.radius, 1.6);
-      if (local > worst) {
-        worst = local;
-        fromFire = f.fire;
-      }
-    }
-    if (worst <= 0) continue;
-
-    // Courbe de fragilité : l'intensité subie croise la vulnérabilité propre.
-    // C'est exactement la même courbe que celle du simulateur de désastres —
-    // voir `world/fragility.ts`. Les dégâts d'origine et ceux d'un scénario
-    // rejoué obéissent ainsi aux mêmes seuils.
-    const stress = stressOf(worst, b.vulnerability, rnd);
-    const state = stateFromStress(stress, rnd, { fire: fromFire ? 0.75 : 0 });
-
-    if (state) setDamage(b, state, severityFromStress(stress), rnd);
-  }
 }

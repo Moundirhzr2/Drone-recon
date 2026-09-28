@@ -3,15 +3,16 @@
 Quatre aléas, jouables sur la ville pendant qu'on la survole. Le panneau se
 trouve dans la colonne de droite, sous la vue nadir.
 
-| Touche           | Effet                                           |
-| ---------------- | ----------------------------------------------- |
-| `1` `2` `3` `4`  | séisme, explosion, inondation, incendie         |
-| `P`              | lancer ou mettre en pause                       |
-| `B` / `N`        | sauter avant / après le sinistre                |
-| `Retour arrière` | annuler et rendre la ville à son état d'origine |
+| Touche           | Effet                                   |
+| ---------------- | --------------------------------------- |
+| `1` `2` `3` `4`  | séisme, explosion, inondation, incendie |
+| `P`              | lancer ou mettre en pause               |
+| `B` / `N`        | sauter avant / après le sinistre        |
+| `Retour arrière` | annuler et rendre la ville intacte      |
 
-Le bilan affiche l'**écart** à l'état d'avant, et pas seulement le décompte
-final : « 14 effondrés » ne dit rien si l'on ignore qu'il y en avait déjà 6.
+La ville démarre intacte : tous les dégâts viennent du simulateur. Le bilan
+affiche, pour chaque état, le nombre de bâtiments et l'écart à l'état d'avant
+le sinistre.
 
 ![Avant une explosion d'une tonne](images/03-avant.jpg)
 ![Après, même cadrage](images/04-apres.jpg)
@@ -39,21 +40,21 @@ partiel au-delà de 0,34, effondrement au-delà de 0,52.
 
 Cette courbe vit dans `world/fragility.ts` et non dans `disaster/`, à dessein :
 elle décrit comment un bâtiment **encaisse**, ce qui est une propriété du bâti et
-non de l'aléa. La génération initiale de la ville l'utilise aussi. Il n'existe
-donc qu'une courbe dans tout le projet, et elle ne peut pas diverger.
+non de l'aléa. Les quatre aléas la partagent : il n'existe qu'une courbe dans
+tout le projet, et elle ne peut pas diverger.
 
 ## Quatre aléas, quatre signatures
 
 C'est tout l'intérêt de les mettre côte à côte : ils produisent des cartes de
 dégâts de formes très différentes. Relevé sur la ville réelle, 2 282 bâtiments
-dont 95 déjà endommagés au départ, avec les réglages par défaut :
+intacts au départ, avec les réglages par défaut :
 
 | Aléa       | Réglage       | Touchés | Signature                                                                  |
 | ---------- | ------------- | ------- | -------------------------------------------------------------------------- |
-| Séisme     | intensité VII | 1 123   | toute la ville encaisse : 915 fissurés, 157 partiels, 7 effondrés, 30 feux |
-| Explosion  | 1 t de TNT    | 706     | rayon net et brutal : 112 effondrés, 74 incendiés                          |
-| Inondation | crue de 3 m   | 211     | suit le relief, pas la distance ; aucun effondrement                       |
-| Incendie   | vigueur 1,2   | 268     | une langue sous le vent : 12 % du bâti détruit                             |
+| Séisme     | intensité VII | 1 187   | toute la ville encaisse : 987 fissurés, 163 partiels, 7 effondrés, 30 feux |
+| Explosion  | 1 t de TNT    | 721     | rayon net et brutal : 116 effondrés, 74 incendiés                          |
+| Inondation | crue de 3 m   | 228     | suit le relief, pas la distance ; aucun effondrement                       |
+| Incendie   | vigueur 1,2   | 270     | une langue sous le vent : 12 % du bâti détruit                             |
 
 ### Séisme
 
@@ -148,19 +149,21 @@ Trois facteurs décident d'une propagation :
 - **la combustibilité**, où le bâti ancien à charpente bois l'emporte de loin sur
   le béton récent.
 
-Calage mesuré sur les 2 282 bâtiments réels, en moyenne sur cinq graines, part
+Calage mesuré sur les 2 282 bâtiments réels, en moyenne sur vingt graines, part
 du bâti détruit :
 
 | Vigueur | Part détruite | Comportement                  |
 | ------- | ------------- | ----------------------------- |
-| 0,5     | 1 %           | le feu s'éteint sur place     |
-| 1,2     | 12 %          | un grand incendie de quartier |
-| 2,0     | 48 %          | l'embrasement général         |
+| 0,5     | 0,5 %         | le feu s'éteint sur place     |
+| 1,2     | 10 %          | un grand incendie de quartier |
+| 2,0     | 46 %          | l'embrasement général         |
 
 L'écart entre ces trois valeurs n'est pas un défaut de réglage, c'est un seuil
 de percolation, propre à tout feu urbain : dans une vieille ville aux bâtiments
 mitoyens, en dessous d'une certaine vigueur le feu meurt, au-dessus il trouve
-toujours un voisin à allumer. Londres en 1666 en reste l'exemple.
+toujours un voisin à allumer. Londres en 1666 en reste l'exemple. À 1,2, tout
+près du seuil, le hasard décide : le feu meurt sur place pour six graines sur
+vingt.
 
 Ce calage a demandé deux corrections. La première version brûlait toute la ville
 quel que soit le réglage, ce qui rendait le curseur de vigueur inutile. En

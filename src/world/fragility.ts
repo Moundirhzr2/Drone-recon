@@ -18,10 +18,10 @@
  *
  * Ce module vit dans `world/` et non dans `disaster/` à dessein : il décrit
  * comment un bâtiment ENCAISSE, ce qui est une propriété du bâti, pas de
- * l'aléa. Il est partagé par la génération initiale de la ville et par le
- * simulateur, de sorte qu'un même bâtiment réagisse de la même façon quelle
- * que soit l'origine du dommage — et qu'il n'existe qu'UNE courbe dans tout
- * le projet, impossible à faire diverger par inadvertance.
+ * l'aléa. Les quatre aléas du simulateur le partagent, de sorte qu'un même
+ * bâtiment réagisse de la même façon quelle que soit l'origine du dommage — et
+ * qu'il n'existe qu'UNE courbe dans tout le projet, impossible à faire diverger
+ * par inadvertance.
  */
 
 import { DAMAGE_ORDER, type DamageState } from './buildings';

@@ -99,13 +99,11 @@ Alsace. Il est sans conséquence tant que le terrain, les bâtiments et le drone
 partagent la même référence, ce qui est le cas en mode hors-ligne. Les modes
 `ion` et `google` apportent leur propre terrain et n'utilisent pas ce relief.
 
-## Dégâts de départ
+## État de départ
 
-La ville ne démarre pas intacte : deux zones sont déjà sinistrées, l'une
-endommagée, l'autre incendiée, pour que la reconnaissance ait quelque chose à
-trouver dès le décollage. Elles sont serrées — 90 et 110 m de rayon — parce que
-la vieille ville est dense : un foyer plus large y toucherait des centaines de
-bâtiments, et une reconnaissance n'aurait plus de sens.
+La ville démarre intacte, telle que la décrit la BD TOPO® : aucun bâtiment
+n'est endommagé au chargement. Les dégâts ne viennent que du
+[simulateur de désastres](simulateur.md), lancé par l'utilisateur.
 
 ## Attribution
 

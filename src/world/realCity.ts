@@ -22,7 +22,6 @@
  */
 
 import { CONFIG } from '../core/config';
-import { makeRandom } from '../core/math';
 import {
   computeVulnerability,
   type Building,
@@ -30,7 +29,7 @@ import {
   type RoofMaterial,
   type WallMaterial,
 } from './buildings';
-import { seedInitialDamage, type City, type DamageFocus } from './city';
+import type { City } from './city';
 import type { Relief } from './terrain';
 
 /** Bâtiment tel qu'écrit par `scripts/fetch-buildings.mjs`. */
@@ -78,17 +77,6 @@ const LANDMARKS: Array<{
 }> = [
   { name: "Tour de l'Europe", lat: 47.74962, lon: 7.33527, radius: 25, minHeight: 45, height: 100 },
   { name: 'Temple Saint-Étienne', lat: 47.7472, lon: 7.33878, radius: 30, use: 'Religieux' },
-];
-
-/**
- * Foyers de dégâts initiaux, ceux que la mission de reconnaissance doit
- * retrouver. Bien plus serrés que ceux de la ville générée : la vieille ville
- * est trente fois plus dense, et un foyer de 185 m y toucherait des centaines
- * de bâtiments — trop pour qu'une reconnaissance ait encore un sens.
- */
-const REAL_FOCI: DamageFocus[] = [
-  { east: 120, north: 90, radius: 110, intensity: 1.45, fire: false },
-  { east: -210, north: -150, radius: 90, intensity: 1.55, fire: true },
 ];
 
 // --- Géométrie -----------------------------------------------------------------
@@ -360,8 +348,6 @@ export async function loadRealCity(
       b.light,
     );
   }
-
-  seedInitialDamage(buildings, makeRandom(CONFIG.city.seed), REAL_FOCI);
 
   const known = buildings.filter((b) => b.yearKnown).length;
   console.info(
