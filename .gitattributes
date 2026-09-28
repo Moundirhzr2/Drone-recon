@@ -1,6 +1,11 @@
 # Normalise les fins de ligne : le dépôt stocke en LF, Windows travaille en CRLF.
 * text=auto eol=lf
 
+# Sauf les scripts de Windows : `cmd.exe` peut manquer une étiquette de `goto`
+# dans un fichier aux fins de ligne LF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
 # Binaires, à ne jamais convertir ni differ.
 *.png  binary
 *.jpg  binary

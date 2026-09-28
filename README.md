@@ -88,6 +88,10 @@ L'application s'ouvre sur <http://localhost:5173>. Aucune clé n'est nécessaire
 les bâtiments et le relief sont livrés avec le dépôt, et la photographie aérienne
 vient des services publics de l'IGN.
 
+Sous Windows, un double clic sur `lancer-drone.cmd` fait la même chose : il
+installe les dépendances la première fois, démarre le serveur et ouvre le
+navigateur. Fermer sa fenêtre arrête le simulateur.
+
 Pour la ville photoréaliste : créer un compte gratuit sur
 [Cesium ion](https://ion.cesium.com), ajouter « Google Photorealistic 3D Tiles »
 à ses ressources depuis l'Asset Depot, puis copier le jeton dans un fichier
