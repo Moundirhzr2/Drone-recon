@@ -15,8 +15,10 @@
 
 ![Interface complète après une explosion, sur la ville photoréaliste : télémétrie, drone en troisième personne, caméra nadir, bilan du simulateur](docs/images/00-interface.jpg)
 
-▶ [Vidéo de démonstration](docs/video/visite-guidee.mp4) : la visite guidée,
-3 minutes, enregistrée sur une GTX 1650 de portable.
+https://github.com/user-attachments/assets/9abfcd15-ab88-4252-bcb3-071d72b7d9c1
+
+La visite guidée, 3 minutes, enregistrée sur une GTX 1650 de portable
+([fichier de la vidéo en pleine qualité](docs/video/visite-guidee.mp4)).
 
 Un drone survole le centre réel de Mulhouse, autour de la place de la Réunion :
 2 282 bâtiments reconstitués depuis les données de l'IGN, posés sur le relief et
