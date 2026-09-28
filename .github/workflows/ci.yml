@@ -31,9 +31,11 @@ jobs:
 
       # `npm ci` et non `npm install` : l'installation suit strictement le
       # fichier de verrouillage, donc la CI teste bien les mêmes versions que
-      # celles qui seront installées ailleurs.
+      # celles qui seront installées ailleurs. `--ignore-scripts` : aucun
+      # script de paquet ne s'exécute à l'installation ; aucune dépendance
+      # n'en a besoin (esbuild trouve son binaire sans le sien).
       - name: Installer les dépendances
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Vérifier le formatage
         run: npm run format:check

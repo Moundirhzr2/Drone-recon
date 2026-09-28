@@ -193,9 +193,11 @@ class HemisphereEmitter {
   constructor(private radius: number) {}
 
   emit(p: Cesium.Particle): void {
+    // Tirages du générateur de Cesium, celui de ses propres systèmes de
+    // particules : un simple effet visuel, sans enjeu de sécurité.
     // cos θ uniforme sur [0, 1] donne une densité uniforme sur la demi-sphère.
-    const z = Math.random();
-    const phi = Math.random() * Math.PI * 2;
+    const z = Cesium.Math.nextRandomNumber();
+    const phi = Cesium.Math.nextRandomNumber() * Math.PI * 2;
     const r = Math.sqrt(1 - z * z);
     p.velocity = Cesium.Cartesian3.fromElements(
       r * Math.cos(phi),
@@ -205,7 +207,7 @@ class HemisphereEmitter {
     );
     p.position = Cesium.Cartesian3.multiplyByScalar(
       p.velocity,
-      this.radius * Math.cbrt(Math.random()),
+      this.radius * Math.cbrt(Cesium.Math.nextRandomNumber()),
       p.position,
     );
   }

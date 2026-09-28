@@ -125,7 +125,8 @@ async function main() {
   for (let start = 0; ; start += PAGE) {
     const page = await fetchPage(start);
     features.push(...page.features);
-    console.log(`  ${features.length} / ${page.numberMatched} bâtiments`);
+    // Réponse du serveur : convertie en nombre avant d'aller dans le journal.
+    console.log(`  ${features.length} / ${Number(page.numberMatched)} bâtiments`);
     if (page.features.length < PAGE) break;
   }
 
