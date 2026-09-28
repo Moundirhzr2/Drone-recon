@@ -11,8 +11,9 @@
  * 2. En vol, un RÉGULATEUR tient la cadence. Il joue d'abord sur l'échelle de
  *    rendu, le levier le plus fin ; si la cadence manque encore à l'échelle
  *    minimale, il coupe une option coûteuse, la plus chère d'abord. Il ne les
- *    rétablit jamais : mieux vaut une image un peu moins riche qu'une qualité
- *    qui clignote.
+ *    rétablit jamais de lui-même : mieux vaut une image un peu moins riche
+ *    qu'une qualité qui clignote. Le pilote, lui, peut tout rétablir d'une
+ *    touche et fixer la qualité (`toggleFixed`).
  *
  * Le nom de la carte n'est qu'un indice — deux machines à la même carte n'ont
  * pas le même écran ni le même processeur. C'est le régulateur qui a le dernier
@@ -210,6 +211,10 @@ function applyQuality(viewer: Cesium.Viewer, q: QualitySettings): void {
 export class QualityGovernor {
   private lastCheck = 0;
   private scale: number;
+  /** Les réglages du profil au démarrage, ceux que le pilote peut rétablir. */
+  private readonly base: QualitySettings;
+  /** Qualité fixée par le pilote : le régulateur n'y touche plus. */
+  private fixed = false;
 
   constructor(
     private viewer: Cesium.Viewer,
@@ -217,6 +222,58 @@ export class QualityGovernor {
     readonly settings: QualitySettings,
   ) {
     this.scale = settings.resolutionScale;
+    this.base = { ...settings };
+  }
+
+  /** La qualité est-elle fixée par le pilote ? */
+  get isFixed(): boolean {
+    return this.fixed;
+  }
+
+  /** Le régulateur a-t-il baissé l'échelle de rendu ou coupé une option ? */
+  get degraded(): boolean {
+    const q = this.settings;
+    const b = this.base;
+    return (
+      this.scale < b.resolutionScale ||
+      q.shadows !== b.shadows ||
+      q.msaa !== b.msaa ||
+      q.groundAtmosphere !== b.groundAtmosphere ||
+      q.fxaa !== b.fxaa
+    );
+  }
+
+  /**
+   * Fixe la pleine qualité, ou rend la main au régulateur.
+   *
+   * Fixer rétablit tout ce que le régulateur avait retiré — la pleine
+   * définition et les options du profil — puis le suspend. La cadence peut
+   * alors baisser pendant un sinistre : c'est le pilote qui l'a choisi.
+   * @returns vrai si la qualité est désormais fixée.
+   */
+  toggleFixed(now: number): boolean {
+    this.fixed = !this.fixed;
+    if (this.fixed) this.restore();
+    // Rendu la main, le régulateur laisse passer deux secondes avant de juger.
+    else this.lastCheck = now;
+    return this.fixed;
+  }
+
+  private restore(): void {
+    const q = this.settings;
+    const b = this.base;
+    const scene = this.viewer.scene;
+    q.shadows = b.shadows;
+    this.viewer.shadows = b.shadows;
+    q.msaa = b.msaa;
+    scene.msaaSamples = b.msaa;
+    q.groundAtmosphere = b.groundAtmosphere;
+    scene.globe.showGroundAtmosphere = b.groundAtmosphere;
+    q.fxaa = b.fxaa;
+    scene.postProcessStages.fxaa.enabled = b.fxaa;
+    this.scale = CONFIG.performance.maxScale;
+    this.viewer.resolutionScale = this.scale;
+    console.info(`[qualité] rétablie et fixée par le pilote, échelle ${this.scale.toFixed(2)}`);
   }
 
   /**
@@ -225,7 +282,9 @@ export class QualityGovernor {
    */
   update(now: number, fps: number): string | null {
     const perf = CONFIG.performance;
-    if (!perf.adaptiveResolution || now - this.lastCheck < 2000 || fps <= 0) return null;
+    if (this.fixed || !perf.adaptiveResolution || now - this.lastCheck < 2000 || fps <= 0) {
+      return null;
+    }
     this.lastCheck = now;
 
     // Sous 5 images par seconde, ce n'est pas la charge : c'est le navigateur

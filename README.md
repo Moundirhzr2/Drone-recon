@@ -116,6 +116,7 @@ mains ouvertes et immobiles pendant les trois secondes de calibrage.
 | `M`              | changer de rendu : réaliste, fil de fer, scan             |
 | `C`              | vue embarquée ou caméra de suivi                          |
 | `I`              | masquer ou afficher l'interface (aussi par son bouton)    |
+| `F`              | rétablir la qualité d'image et la fixer (bouton HD)       |
 | `H` / `K`        | activer le pilotage gestuel / le recalibrer               |
 | `Maj`            | stabiliser le drone                                       |
 | `R`              | retour au point de décollage                              |

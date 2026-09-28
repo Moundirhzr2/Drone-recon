@@ -72,6 +72,9 @@ export class KeyboardControl implements ControlSource {
       case 'KeyI':
         emit('view:toggle-hud');
         break;
+      case 'KeyF':
+        emit('view:toggle-quality');
+        break;
       case 'KeyR':
         emit('drone:reset');
         break;

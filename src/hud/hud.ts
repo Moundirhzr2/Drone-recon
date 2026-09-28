@@ -378,6 +378,44 @@ export class HudToggle {
 }
 
 // ------------------------------------------------------------------
+// Qualité d'image
+// ------------------------------------------------------------------
+/**
+ * Bouton HD, à droite de l'œil. Il passe à l'orange quand le régulateur a
+ * baissé la qualité pour garder la cadence ; un appui la rétablit et la fixe,
+ * un second rend la main au régulateur.
+ */
+export class QualityButton {
+  private readonly button = $<HTMLButtonElement>('quality-toggle');
+  private state = '';
+
+  constructor() {
+    this.button.addEventListener('click', () => {
+      // Même raison que pour l'œil : ESPACE ne doit pas le redéclencher.
+      this.button.blur();
+      emit('view:toggle-quality');
+    });
+    this.update(false, false);
+  }
+
+  /** Reflète l'état du régulateur ; n'écrit dans la page qu'au changement. */
+  update(fixed: boolean, degraded: boolean): void {
+    const state = fixed ? 'fixed' : degraded ? 'degraded' : 'auto';
+    if (state === this.state) return;
+    this.state = state;
+    this.button.dataset.state = state;
+    const label = fixed
+      ? 'Qualité fixée — rendre la main au régulateur (F)'
+      : degraded
+        ? 'Qualité réduite pour rester fluide — la rétablir (F)'
+        : 'Fixer la pleine qualité (F)';
+    this.button.title = label;
+    this.button.setAttribute('aria-label', label);
+    this.button.setAttribute('aria-pressed', String(fixed));
+  }
+}
+
+// ------------------------------------------------------------------
 // Bandeau de commandes et écran de chargement
 // ------------------------------------------------------------------
 export function buildKeymap(): void {
@@ -390,6 +428,7 @@ export function buildKeymap(): void {
     ['M', 'rendu'],
     ['C', 'caméra'],
     ['I', 'interface'],
+    ['F', 'qualité'],
     ['H', 'mains'],
     ['K', 'calibrer'],
     ['MAJ', 'stabiliser'],

@@ -81,13 +81,19 @@ plus de pixels** qu'un petit panneau de test. Le simulateur vise donc une cadenc
    chère d'abord : les ombres si on les a réactivées, puis le MSAA, la brume au
    sol, FXAA. Le pilote en est averti dans le panneau de pilotage.
 
-Il ne rétablit jamais une option coupée : mieux vaut une image un peu moins riche
-qu'une qualité qui clignote. L'ajustement a lieu au plus toutes les deux
-secondes, parce que changer d'échelle reconstruit les tampons de rendu. Les
+Il ne rétablit jamais de lui-même une option coupée : mieux vaut une image un peu
+moins riche qu'une qualité qui clignote. L'ajustement a lieu au plus toutes les
+deux secondes, parce que changer d'échelle reconstruit les tampons de rendu. Les
 seuils — descente sous 40 images par seconde, remontée au-dessus de 55 — laissent
 une marge contre l'oscillation. Le seuil de remontée était auparavant de 62,5 :
 sur un écran à 60 Hz, qui plafonne le navigateur à 60, la résolution ne
 remontait jamais.
+
+Le pilote, lui, peut tout rétablir. La touche `F`, ou le bouton HD à droite de
+l'œil, remet la pleine définition et les options du profil, puis suspend le
+régulateur jusqu'au prochain appui. Le bouton passe à l'orange dès que le
+régulateur a baissé la qualité. Pour une capture ou une démonstration, une image
+nette à 30 images par seconde vaut mieux qu'une image molle à 50.
 
 Chaque décision est journalisée :
 

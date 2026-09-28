@@ -25,6 +25,8 @@ export type AppEvents = {
   'view:toggle-fpv': void;
   /** Masquer ou afficher toute l'interface, pour ne garder que la vue 3D. */
   'view:toggle-hud': void;
+  /** Rétablir et fixer la pleine qualité d'image, ou rendre la main au régulateur. */
+  'view:toggle-quality': void;
   /** Activer ou couper le suivi des mains. */
   'hands:toggle': void;
   /** Relancer le calibrage des mains. */

@@ -930,7 +930,8 @@ body {
 }
 
 /* ---------- Interface masquée (bouton, touche I) ---------- */
-#hud-toggle {
+#hud-toggle,
+#quality-toggle {
   position: absolute;
   top: 12px;
   /* Juste à droite de la télémétrie : 12 + 268 px, plus 8 px d'écart. */
@@ -947,7 +948,8 @@ body {
   color: var(--accent);
   cursor: pointer;
 }
-#hud-toggle:hover {
+#hud-toggle:hover,
+#quality-toggle:hover {
   border-color: var(--accent);
 }
 #hud-toggle svg {
@@ -962,7 +964,7 @@ body {
 #hud-toggle .slash {
   display: none;
 }
-body.hud-hidden :is(#overlay-main, .panel, #keymap, #gpu-warning, #demo-caption) {
+body.hud-hidden :is(#overlay-main, .panel, #keymap, #gpu-warning, #demo-caption, #quality-toggle) {
   visibility: hidden;
 }
 /* Seul reste le bouton, discret tant qu'on ne le survole pas. */
@@ -975,6 +977,29 @@ body.hud-hidden #hud-toggle:focus-visible {
 }
 body.hud-hidden #hud-toggle .slash {
   display: inline;
+}
+
+/* ---------- Qualité d'image (bouton HD, touche F) ---------- */
+#quality-toggle {
+  /* À droite de l'œil : 288 + 30 px, plus 6 px d'écart. */
+  left: 324px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+/* Le régulateur a baissé la qualité pour garder la cadence. */
+#quality-toggle[data-state='degraded'] {
+  color: var(--warn);
+  border-color: rgba(255, 196, 0, 0.45);
+}
+#quality-toggle[data-state='degraded']:hover {
+  border-color: var(--warn);
+}
+/* Qualité fixée : le bouton reste enfoncé. */
+#quality-toggle[data-state='fixed'] {
+  background: rgba(0, 229, 255, 0.16);
+  border-color: var(--accent);
 }
 
 /* ---------- Ville photoréaliste : sources à l'écran ---------- */

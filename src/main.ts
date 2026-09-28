@@ -48,6 +48,7 @@ import {
   HandsPanel,
   HudToggle,
   NadirPanel,
+  QualityButton,
   ReportPanel,
   showSoftwareRenderingWarning,
 } from './hud/hud';
@@ -130,6 +131,7 @@ async function main(): Promise<void> {
   const report = new ReportPanel();
   const gallery = new Gallery();
   const hudToggle = new HudToggle();
+  const qualityButton = new QualityButton();
 
   const nadirCanvas = document.getElementById('nadir-canvas') as HTMLCanvasElement;
   const nadirOverlay = document.getElementById('nadir-overlay') as HTMLCanvasElement;
@@ -210,6 +212,17 @@ async function main(): Promise<void> {
   });
 
   on('view:toggle-hud', () => hudToggle.toggle());
+
+  on('view:toggle-quality', () => {
+    const fixed = quality.toggleFixed(performance.now());
+    qualityButton.update(fixed, quality.degraded);
+    handsPanel.setMessage(
+      fixed
+        ? 'Qualité fixée : pleine définition, même si la cadence baisse'
+        : 'Qualité automatique : elle baisse au besoin pour rester fluide',
+      'ok',
+    );
+  });
 
   on('disaster:toggle-play', () => {
     disasterPanel.open();
@@ -360,10 +373,13 @@ async function main(): Promise<void> {
     // --- Qualité adaptative -------------------------------------------------
     // Résolution d'abord, puis options coûteuses : voir `world/quality.ts`.
     const dropped = quality.update(now, fps);
-    if (dropped) handsPanel.setMessage(`Qualité réduite pour rester fluide : ${dropped}`, 'info');
+    if (dropped) {
+      handsPanel.setMessage(`Qualité réduite pour rester fluide : ${dropped} — F pour la rétablir`);
+    }
 
     if (now - lastHud > 100) {
       lastHud = now;
+      qualityButton.update(quality.isFixed, quality.degraded);
       gps.update(drone.state, drone.state.holding, fps);
       handsPanel.update(ctl, mixer.active, hands.isRunning ? hands.status() : null);
       if (diagnostic) report.update(lastResult.detections, lastResult.metrics, city.buildings);
