@@ -63,7 +63,10 @@ export class KeyboardControl implements ControlSource {
       case 'KeyV':
         emit('view:toggle-diagnostic');
         break;
+      // M n'est pas au même endroit sur les deux claviers : sur AZERTY, la
+      // touche M a le code `Semicolon`, et `KeyM` y désigne la virgule.
       case 'KeyM':
+      case 'Semicolon':
         emit('view:cycle-render');
         break;
       case 'KeyC':
