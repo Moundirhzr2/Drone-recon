@@ -421,6 +421,13 @@ export class BuildingRenderer {
     return { chunks: this.chunks.size, pending: this.ruinQueue.size };
   }
 
+  /** Vrai quand rien n'attend plus : ruines construites, couleurs appliquées. */
+  get idle(): boolean {
+    if (this.ruinQueue.size || this.ruinRepaint) return false;
+    for (const chunk of this.chunks.values()) if (chunk.repaint) return false;
+    return true;
+  }
+
   /**
    * Construit toute la ville d'un coup. Réservé au démarrage : ensuite, les
    * changements passent par `sync` et sont étalés par `tick`.

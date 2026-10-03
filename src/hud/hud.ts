@@ -436,6 +436,7 @@ export function buildKeymap(): void {
     ['1-4', 'aléa'],
     ['P', 'lancer'],
     ['B / N', 'avant / après'],
+    ['J', 'jeu de données'],
   ];
   $('keymap').innerHTML = keys
     .map(([k, v]) => `<div class="km"><kbd>${k}</kbd>${v}</div>`)

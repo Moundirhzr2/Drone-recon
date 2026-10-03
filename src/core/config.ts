@@ -151,6 +151,27 @@ export const CONFIG = {
     range: 260,
   },
 
+  /**
+   * Export d'un jeu de données (touche J) : le drone balaie la zone pour
+   * chaque aléa et enregistre des images nadir annotées (voir `dataset/`).
+   */
+  dataset: {
+    /**
+     * Hauteur du balayage, en mètres au-dessus du sol. À 60 m, une image
+     * couvre 56 m de côté, soit environ 9 cm par pixel en 640 px.
+     */
+    altitude: 60,
+    /** Côté des images, en pixels : 640 est l'entrée usuelle de YOLO. */
+    imageSize: 640,
+    /** Qualité JPEG des images, entre 0 et 1. */
+    jpegQuality: 0.92,
+    /**
+     * Part minimale d'un bâtiment restée dans le cadre pour l'annoter : en
+     * dessous, il est trop coupé pour qu'on le reconnaisse.
+     */
+    minVisible: 0.3,
+  },
+
   /** Reconnaissance des mains. */
   hands: {
     /** Zone morte centrale, en fraction du cadre. Sans elle, le drone dérive en permanence. */

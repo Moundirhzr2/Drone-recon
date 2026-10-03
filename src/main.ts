@@ -39,6 +39,7 @@ import { DisasterEffects } from './effects/disasterEffects';
 import { analyse, type DiagnosticResult } from './diagnostic/detector';
 import { drawMainOverlay, drawNadirOverlay } from './diagnostic/overlay';
 import { runTour } from './demo/tour';
+import { DatasetCampaign } from './dataset/campaign';
 import {
   boot,
   buildKeymap,
@@ -223,6 +224,39 @@ async function main(): Promise<void> {
       'ok',
     );
   });
+
+  // --- Jeu de données (touche J) : voir `dataset/campaign.ts` ----------------
+  const dataset = new DatasetCampaign({
+    city,
+    drone: drone.state,
+    nadir,
+    scene,
+    panel: disasterPanel,
+    groundAt,
+    renderIdle: () => renderer.idle,
+    prepareView: () => {
+      if (diagnostic) {
+        diagnostic = false;
+        renderer.setDiagnostic(false);
+        report.setOpen(false);
+      }
+      if (renderMode !== 'realiste') {
+        renderMode = 'realiste';
+        renderer.setRenderMode(renderMode);
+      }
+      // La ville dessinée d'après l'IGN : sans le relevé de Google, dont les
+      // images ne peuvent pas être extraites, et sans fumée ni flammes.
+      renderer.setPhotoreal(false);
+      photoreal?.setVisible(false);
+      effects.setVisible(false);
+    },
+    restoreView: () => {
+      if (photoreal) renderer.setPhotoreal(true);
+      syncViews();
+    },
+    report: (text, kind) => handsPanel.setMessage(text, kind ?? 'info'),
+  });
+  on('dataset:toggle', () => dataset.toggle());
 
   on('disaster:toggle-play', () => {
     disasterPanel.open();
@@ -458,6 +492,7 @@ async function main(): Promise<void> {
       effects,
       quality,
       photoreal,
+      dataset,
       step: (n?: number) => step(n ?? performance.now()),
       get diagnostic() {
         return diagnostic;

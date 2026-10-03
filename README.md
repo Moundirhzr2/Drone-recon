@@ -71,6 +71,9 @@ travaux peut s'y substituer sans toucher au reste.
   précision et rappel calculés en direct contre la vérité terrain.
 - **Simulateur de désastres** — quatre aléas physiquement fondés, une courbe de
   fragilité commune, une chronologie rejouable et parcourable dans les deux sens.
+- **Export d'un jeu de données** — touche `J` : le drone balaie seul la zone
+  pour chaque aléa et enregistre un millier d'images verticales annotées, aux
+  formats YOLO et COCO, prêtes pour entraîner un détecteur.
 - **Effets visibles** — crue qui monte et remplit les creux du relief, explosion
   (éclair, boule de feu, onde de choc, débris, colonne de fumée), incendies,
   poussière des effondrements, secousse du séisme.
@@ -133,6 +136,7 @@ mains ouvertes et immobiles pendant les trois secondes de calibrage.
 | `P`              | lancer ou mettre en pause le sinistre                     |
 | `B` / `N`        | sauter avant / après le sinistre                          |
 | `Retour arrière` | annuler le sinistre                                       |
+| `J`              | exporter un jeu de données annoté (Chrome ou Edge)        |
 
 Aux mains : la main gauche règle l'altitude et la rotation, la main droite le
 déplacement ; un pincement droit prend une photo, un pincement gauche bascule le
@@ -213,13 +217,15 @@ l'eau.
 | [Architecture](docs/architecture.md)          | organisation du code, boucle de rendu, repère local de Cesium, textures |
 | [Simulateur de désastres](docs/simulateur.md) | courbe de fragilité, physique, calage et effets des quatre aléas        |
 | [Diagnostic](docs/diagnostic.md)              | fonctionnement du détecteur, métriques, fonds de scène                  |
+| [Jeu de données](docs/jeu-de-donnees.md)      | balayage automatique, formats YOLO et COCO, classes, limites            |
 | [Pilotage gestuel](docs/pilotage-gestuel.md)  | gestes, choix des deux mains, réglage de la réactivité                  |
 | [Performance](docs/performance.md)            | profils de qualité, mesures, pièges de Cesium                           |
 
 ## Limites connues
 
 - **Le détecteur est simulé.** Il n'analyse pas l'image ; il bruite la vérité
-  terrain. Son interface est prête pour un modèle réel, qui reste à entraîner.
+  terrain. Son interface est prête pour un modèle réel, qui reste à entraîner,
+  par exemple sur le jeu de données que le simulateur exporte.
 - **Dans la ville dessinée, les toits sont plats.** Chaque bâtiment est une
   extrusion de son contour : la couverture de son toit est dessinée d'après
   l'IGN, mais pas sa pente, ni la flèche du temple Saint-Étienne. La ville
