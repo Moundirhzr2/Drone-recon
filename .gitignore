@@ -12,6 +12,8 @@ ml/runs/
 __pycache__/
 *.pt
 *.onnx
+# …sauf le modèle exporté pour le simulateur (ml/exporter.py), servi au navigateur
+!public/models/*.onnx
 
 # Variables d'environnement — .env.example est versionné, les vraies clés non
 .env

@@ -152,6 +152,21 @@ export const CONFIG = {
   },
 
   /**
+   * Détecteur entraîné (touche O) : le modèle exporté par `ml/exporter.py`,
+   * exécuté dans le navigateur sur l'image nadir. Voir `diagnostic/model.ts`.
+   */
+  model: {
+    /** Fichiers sous `public/` : le modèle `<chemin>.onnx` et sa fiche `<chemin>.json`. */
+    path: 'models/detecteur',
+    /** Confiance minimale d'une boîte. */
+    confidence: 0.3,
+    /** Recouvrement au-delà duquel deux boîtes désignent le même bâtiment. */
+    nmsIoU: 0.6,
+    /** Recouvrement minimal pour rapprocher une boîte d'un bâtiment réel. */
+    matchIoU: 0.5,
+  },
+
+  /**
    * Export d'un jeu de données (touche J) : le drone balaie la zone pour
    * chaque aléa et enregistre des images nadir annotées (voir `dataset/`).
    */

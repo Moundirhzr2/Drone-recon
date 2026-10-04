@@ -58,8 +58,10 @@ export class NadirView {
   /**
    * Rend la scène vue du dessus et la recopie dans `dest`.
    * La caméra principale est restaurée avant de rendre la main.
+   * @param copy second canvas qui reçoit la même image à sa propre taille,
+   *             pour le détecteur entraîné : la passe de rendu sert deux fois.
    */
-  render(dest: HTMLCanvasElement, markRendered = true): NadirGeometry {
+  render(dest: HTMLCanvasElement, markRendered = true, copy?: HTMLCanvasElement): NadirGeometry {
     const cam = this.scene.camera;
     const frustum = cam.frustum as Cesium.PerspectiveFrustum;
     const s = this.state;
@@ -119,6 +121,11 @@ export class NadirView {
       ctx.imageSmoothingEnabled = true;
       ctx.clearRect(0, 0, dest.width, dest.height);
       ctx.drawImage(src, sx, sy, side, side, 0, 0, dest.width, dest.height);
+    }
+    const copyCtx = copy && side > 0 ? copy.getContext('2d') : null;
+    if (copy && copyCtx) {
+      copyCtx.imageSmoothingEnabled = true;
+      copyCtx.drawImage(src, sx, sy, side, side, 0, 0, copy.width, copy.height);
     }
 
     // `fovy` est dérivé de `fov` et de l'aspect : il n'est indéfini que si la

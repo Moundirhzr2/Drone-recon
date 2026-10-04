@@ -74,6 +74,10 @@ travaux peut s'y substituer sans toucher au reste.
 - **Export d'un jeu de données** — touche `J` : le drone balaie seul la zone
   pour chaque aléa et enregistre un millier d'images verticales annotées, aux
   formats YOLO et COCO, prêtes pour entraîner un détecteur.
+- **Détecteur entraîné** — touche `O` : un modèle YOLO entraîné sur ce jeu de
+  données prend la place du détecteur simulé et analyse l'image nadir dans le
+  navigateur, sur la carte graphique ; ses alertes sont confrontées en direct à
+  la vérité du simulateur.
 - **Effets visibles** — crue qui monte et remplit les creux du relief, explosion
   (éclair, boule de feu, onde de choc, débris, colonne de fumée), incendies,
   poussière des effondrements, secousse du séisme.
@@ -137,6 +141,7 @@ mains ouvertes et immobiles pendant les trois secondes de calibrage.
 | `B` / `N`        | sauter avant / après le sinistre                          |
 | `Retour arrière` | annuler le sinistre                                       |
 | `J`              | exporter un jeu de données annoté (Chrome ou Edge)        |
+| `O`              | passer au détecteur entraîné, ou revenir au simulé        |
 
 Aux mains : la main gauche règle l'altitude et la rotation, la main droite le
 déplacement ; un pincement droit prend une photo, un pincement gauche bascule le
@@ -211,21 +216,24 @@ l'eau.
 
 ## Documentation
 
-| Document                                      | Contenu                                                                 |
-| --------------------------------------------- | ----------------------------------------------------------------------- |
-| [Données](docs/donnees.md)                    | sources IGN, traitements, corrections, licence                          |
-| [Architecture](docs/architecture.md)          | organisation du code, boucle de rendu, repère local de Cesium, textures |
-| [Simulateur de désastres](docs/simulateur.md) | courbe de fragilité, physique, calage et effets des quatre aléas        |
-| [Diagnostic](docs/diagnostic.md)              | fonctionnement du détecteur, métriques, fonds de scène                  |
-| [Jeu de données](docs/jeu-de-donnees.md)      | balayage automatique, formats YOLO et COCO, classes, limites            |
-| [Pilotage gestuel](docs/pilotage-gestuel.md)  | gestes, choix des deux mains, réglage de la réactivité                  |
-| [Performance](docs/performance.md)            | profils de qualité, mesures, pièges de Cesium                           |
+| Document                                         | Contenu                                                                          |
+| ------------------------------------------------ | -------------------------------------------------------------------------------- |
+| [Données](docs/donnees.md)                       | sources IGN, traitements, corrections, licence                                   |
+| [Architecture](docs/architecture.md)             | organisation du code, boucle de rendu, repère local de Cesium, textures          |
+| [Simulateur de désastres](docs/simulateur.md)    | courbe de fragilité, physique, calage et effets des quatre aléas                 |
+| [Diagnostic](docs/diagnostic.md)                 | fonctionnement du détecteur, métriques, fonds de scène                           |
+| [Jeu de données](docs/jeu-de-donnees.md)         | balayage automatique, formats YOLO et COCO, classes, limites                     |
+| [Détecteur entraîné](docs/detecteur-entraine.md) | entraînement, export ONNX, exécution dans le navigateur, résultats, autre modèle |
+| [Pilotage gestuel](docs/pilotage-gestuel.md)     | gestes, choix des deux mains, réglage de la réactivité                           |
+| [Performance](docs/performance.md)               | profils de qualité, mesures, pièges de Cesium                                    |
 
 ## Limites connues
 
-- **Le détecteur est simulé.** Il n'analyse pas l'image ; il bruite la vérité
-  terrain. Son interface est prête pour un modèle réel, qui reste à entraîner,
-  par exemple sur le jeu de données que le simulateur exporte.
+- **Le détecteur entraîné n'a vu que des images de synthèse.** Il a appris sur
+  la ville dessinée, à 60 m, nord en haut de l'image : il reste à le valider sur
+  de vraies images de drone. Il ne distingue pas un bâtiment fissuré, que ce
+  rendu dessine comme un intact. Le détecteur par défaut, lui, est simulé : il
+  n'analyse pas l'image, il bruite la vérité terrain.
 - **Dans la ville dessinée, les toits sont plats.** Chaque bâtiment est une
   extrusion de son contour : la couverture de son toit est dessinée d'après
   l'IGN, mais pas sa pente, ni la flèche du temple Saint-Étienne. La ville
@@ -275,6 +283,9 @@ les particules,
 [MediaPipe Hand Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker)
 pour le suivi des mains, [earcut](https://github.com/mapbox/earcut) pour les
 toitures, [TypeScript](https://www.typescriptlang.org) et [Vite](https://vite.dev).
+Le détecteur est entraîné avec [PyTorch](https://pytorch.org) et
+[Ultralytics YOLO](https://docs.ultralytics.com), puis exécuté dans le navigateur
+par [ONNX Runtime Web](https://onnxruntime.ai).
 
 Données : © IGN — BD TOPO®, RGE ALTI®, BD ORTHO® — Licence Ouverte Etalab 2.0.
 Imagerie hors de France : Esri, Maxar, Earthstar Geographics.

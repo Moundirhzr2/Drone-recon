@@ -20,6 +20,15 @@ export default defineConfig({
       ],
     }),
   ],
+  // onnxruntime-web charge son moteur WebAssembly à côté de son propre script
+  // (`new URL(…, import.meta.url)`) : le préassemblage de Vite casserait ce
+  // chemin en développement. Le worker du modèle, lui, est un module ES.
+  optimizeDeps: {
+    exclude: ['onnxruntime-web'],
+  },
+  worker: {
+    format: 'es',
+  },
   server: {
     port: 5173,
     open: true,

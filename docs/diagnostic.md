@@ -52,6 +52,11 @@ Mesuré sur un même foyer de dégâts, le rappel passe de 11 % à 250 m d'altit
 85 % à 150 m, puis 100 % à 60 m. La mécanique de jeu fonctionne : il faut
 s'approcher pour voir.
 
+Le premier avantage a servi : la touche `O` remplace ce détecteur par un vrai
+modèle, entraîné sur les images que le simulateur exporte, sans rien changer en
+aval. Les mêmes métriques mesurent alors ce modèle. Voir
+[détecteur entraîné](detecteur-entraine.md).
+
 ## Lire les métriques
 
 | Métrique      | Question à laquelle elle répond                                   |

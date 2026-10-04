@@ -37,6 +37,7 @@ import { DisasterPlayer } from './disaster/timeline';
 import { DisasterPanel } from './hud/disaster';
 import { DisasterEffects } from './effects/disasterEffects';
 import { analyse, type DiagnosticResult } from './diagnostic/detector';
+import { compareToTruth, describe, rescale, TrainedDetector } from './diagnostic/model';
 import { drawMainOverlay, drawNadirOverlay } from './diagnostic/overlay';
 import { runTour } from './demo/tour';
 import { DatasetCampaign } from './dataset/campaign';
@@ -157,7 +158,7 @@ async function main(): Promise<void> {
       photoreal?.sync();
     },
   });
-  let lastResult: DiagnosticResult = {
+  const noResult = (): DiagnosticResult => ({
     detections: [],
     metrics: {
       truePositives: 0,
@@ -169,11 +170,35 @@ async function main(): Promise<void> {
       classAccuracy: null,
     },
     damagedInFrame: 0,
-  };
+  });
+  let lastResult = noResult();
+
+  // --- Détecteur entraîné (touche O) : voir `diagnostic/model.ts` ------------
+  // Il remplace `analyse()` : ses résultats arrivent du worker, une analyse à
+  // la fois, et sont aussitôt confrontés à la vérité du simulateur.
+  let modelOn = false;
+  const modelCanvas = document.createElement('canvas');
+  const trained = new TrainedDetector((boxes, g) => {
+    if (!modelOn) return;
+    lastResult = compareToTruth(
+      boxes,
+      (b) => trained.classOf(b),
+      city.buildings,
+      g,
+      nadirCanvas.width,
+    );
+    drawNadirOverlay(nadirOverlay, lastResult.detections, g, true);
+  });
 
   // --- Actions ------------------------------------------------------------------
   on('photo:take', () => {
-    const photo = photos.take((g) => analyse(city.buildings, g).detections);
+    // Avec le modèle, la photo reprend ses dernières détections : une analyse
+    // prend du temps, et elle date d'une fraction de seconde au plus.
+    const photo = photos.take((g) =>
+      modelOn
+        ? rescale(lastResult.detections, nadirCanvas.width, g.size)
+        : analyse(city.buildings, g).detections,
+    );
     flashShutter();
     gallery.add(photo);
     handsPanel.setMessage(
@@ -185,17 +210,55 @@ async function main(): Promise<void> {
   // Fumée, flammes et eau brouilleraient la lecture des vues techniques, qui
   // ne montrent que la classification des dommages. Pour la même raison, ces
   // vues reviennent à la ville dessinée.
+  //
+  // Le modèle entraîné voit la scène comme à l'entraînement : la ville dessinée
+  // d'après l'IGN, sans le relevé de Google, sans effets, et sans les couleurs
+  // du diagnostic, qui lui souffleraient la réponse.
   const syncViews = () => {
-    effects.setVisible(renderMode !== 'scan' && !diagnostic);
-    photoreal?.setVisible(renderMode === 'realiste' && !diagnostic);
+    const plain = diagnostic || modelOn;
+    effects.setVisible(renderMode !== 'scan' && !plain);
+    photoreal?.setVisible(renderMode === 'realiste' && !plain);
+    if (photoreal) renderer.setPhotoreal(!modelOn);
+    renderer.setDiagnostic(diagnostic && !modelOn);
+  };
+
+  const setModel = (on: boolean) => {
+    modelOn = on;
+    lastResult = noResult();
+    if (on && renderMode !== 'realiste') {
+      renderMode = 'realiste';
+      renderer.setRenderMode(renderMode);
+    }
+    syncViews();
+    report.setOpen(diagnostic || modelOn);
   };
 
   on('view:toggle-diagnostic', () => {
     diagnostic = !diagnostic;
-    renderer.setDiagnostic(diagnostic);
     syncViews();
-    report.setOpen(diagnostic);
+    report.setOpen(diagnostic || modelOn);
     handsPanel.setMessage(diagnostic ? 'Vue diagnostique' : 'Vue brute', 'ok');
+  });
+
+  on('model:toggle', () => {
+    if (modelOn) {
+      setModel(false);
+      handsPanel.setMessage('Détecteur simulé', 'ok');
+      return;
+    }
+    setModel(true);
+    handsPanel.setMessage('Chargement du modèle entraîné…');
+    trained.load().then(
+      () => {
+        if (!modelOn) return;
+        const where = trained.backend === 'webgpu' ? 'carte graphique' : 'processeur';
+        handsPanel.setMessage(`Modèle entraîné actif, sur le ${where} — O pour revenir`, 'ok');
+      },
+      () => {
+        setModel(false);
+        handsPanel.setMessage(`Modèle indisponible : ${trained.error}`, 'err');
+      },
+    );
   });
 
   on('view:cycle-render', () => {
@@ -235,6 +298,7 @@ async function main(): Promise<void> {
     groundAt,
     renderIdle: () => renderer.idle,
     prepareView: () => {
+      if (modelOn) setModel(false);
       if (diagnostic) {
         diagnostic = false;
         renderer.setDiagnostic(false);
@@ -250,10 +314,7 @@ async function main(): Promise<void> {
       photoreal?.setVisible(false);
       effects.setVisible(false);
     },
-    restoreView: () => {
-      if (photoreal) renderer.setPhotoreal(true);
-      syncViews();
-    },
+    restoreView: syncViews,
     report: (text, kind) => handsPanel.setMessage(text, kind ?? 'info'),
   });
   on('dataset:toggle', () => dataset.toggle());
@@ -378,12 +439,21 @@ async function main(): Promise<void> {
 
     // Vue nadir : seconde passe de rendu, cadencée à part.
     if (nadir.due(now)) {
-      const g = photoreal
-        ? photoreal.coarser(() => nadir.render(nadirCanvas))
-        : nadir.render(nadirCanvas);
-      lastResult = analyse(city.buildings, g);
-      drawNadirOverlay(nadirOverlay, lastResult.detections, g, diagnostic);
-      nadirPanel.update(g, lastResult.detections, diagnostic);
+      // Le modèle ne reçoit une image que s'il a fini la précédente : on ne
+      // recopie l'image à sa taille d'entrée que dans ce cas.
+      const feed = modelOn && trained.idle ? modelCanvas : undefined;
+      const inputSize = trained.card?.inputSize ?? 0;
+      if (feed && feed.width !== inputSize) feed.width = feed.height = inputSize;
+      const shoot = () => nadir.render(nadirCanvas, true, feed);
+      const g = photoreal ? photoreal.coarser(shoot) : shoot();
+      if (feed) trained.submit(feed, { ...g, size: inputSize });
+      if (!modelOn) lastResult = analyse(city.buildings, g);
+      drawNadirOverlay(nadirOverlay, lastResult.detections, g, diagnostic || modelOn);
+      nadirPanel.update(
+        g,
+        lastResult.detections,
+        modelOn ? 'modele' : diagnostic ? 'diagnostic' : 'brut',
+      );
     }
 
     // Rendu de la vue principale.
@@ -416,7 +486,10 @@ async function main(): Promise<void> {
       qualityButton.update(quality.isFixed, quality.degraded);
       gps.update(drone.state, drone.state.holding, fps);
       handsPanel.update(ctl, mixer.active, hands.isRunning ? hands.status() : null);
-      if (diagnostic) report.update(lastResult.detections, lastResult.metrics, city.buildings);
+      if (diagnostic || modelOn) {
+        const note = modelOn ? describe(trained, drone.state.agl) : '';
+        report.update(lastResult.detections, lastResult.metrics, city.buildings, note);
+      }
     }
   }
 
@@ -493,6 +566,7 @@ async function main(): Promise<void> {
       quality,
       photoreal,
       dataset,
+      trained,
       step: (n?: number) => step(n ?? performance.now()),
       get diagnostic() {
         return diagnostic;

@@ -29,6 +29,8 @@ export type AppEvents = {
   'view:toggle-quality': void;
   /** Lancer ou arrêter l'export d'un jeu de données annoté. */
   'dataset:toggle': void;
+  /** Passer du détecteur simulé au modèle entraîné, et inversement. */
+  'model:toggle': void;
   /** Activer ou couper le suivi des mains. */
   'hands:toggle': void;
   /** Relancer le calibrage des mains. */

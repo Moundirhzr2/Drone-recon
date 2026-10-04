@@ -32,6 +32,17 @@ function put(el: HTMLElement | null, text: string): void {
   if (el && el.textContent !== text) el.textContent = text;
 }
 
+/** Texte libre inséré dans du HTML : un message d'erreur peut contenir des chevrons. */
+function escapeHtml(text: string): string {
+  const entities: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+  };
+  return text.replace(/[&<>"]/g, (c) => entities[c]);
+}
+
 // ------------------------------------------------------------------
 // Télémétrie (haut gauche)
 // ------------------------------------------------------------------
@@ -125,6 +136,14 @@ export class GpsPanel {
 // ------------------------------------------------------------------
 // Vue nadir (haut droite)
 // ------------------------------------------------------------------
+export type NadirViewMode = 'brut' | 'diagnostic' | 'modele';
+
+const NADIR_TAG: Record<NadirViewMode, string> = {
+  brut: 'BRUT',
+  diagnostic: 'DIAGNOSTIC',
+  modele: 'MODÈLE',
+};
+
 export class NadirPanel {
   private stats = $('nadir-stats');
   private modeTag = $('nadir-mode');
@@ -145,9 +164,11 @@ export class NadirPanel {
     }
   }
 
-  update(g: NadirGeometry | null, detections: Detection[], diagnostic: boolean): void {
-    put(this.modeTag, diagnostic ? 'DIAGNOSTIC' : 'BRUT');
-    this.modeTag.className = 'tag' + (diagnostic ? ' hot' : '');
+  /** @param view ce que montre la vignette : l'image seule, le diagnostic simulé ou le modèle. */
+  update(g: NadirGeometry | null, detections: Detection[], view: NadirViewMode): void {
+    put(this.modeTag, NADIR_TAG[view]);
+    this.modeTag.className =
+      'tag' + (view === 'diagnostic' ? ' hot' : view === 'modele' ? ' on' : '');
 
     if (!g) return;
     put(this.foot, `${g.footprint.toFixed(0)} m × ${g.footprint.toFixed(0)} m`);
@@ -234,13 +255,14 @@ export class ReportPanel {
     this.panel.classList.toggle('collapsed', !open);
   }
 
-  update(detections: Detection[], metrics: Metrics, buildings: Building[]): void {
+  /** @param note texte affiché sous les mesures : d'où viennent les détections, et leurs limites. */
+  update(detections: Detection[], metrics: Metrics, buildings: Building[], note = ''): void {
     put(this.count, String(detections.length));
 
     // On ne reconstruit la liste que si son contenu a réellement changé.
     const signature =
       detections.map((d) => `${d.buildingId}:${d.predicted}:${d.score.toFixed(2)}`).join('|') +
-      `#${metrics.precision ?? -1}`;
+      `#${metrics.precision ?? -1}#${note}`;
     if (signature === this.lastSignature) return;
     this.lastSignature = signature;
 
@@ -283,7 +305,8 @@ export class ReportPanel {
         <div class="m"><span>RAPPEL</span><b>${pct(metrics.recall)}</b></div>
         <div class="m"><span>CLASSE OK</span><b>${pct(metrics.classAccuracy)}</b></div>
         <div class="m"><span>MANQUÉS</span><b>${metrics.falseNegatives}</b></div>
-      </div>`;
+      </div>
+      ${note ? `<p class="report-note">${escapeHtml(note)}</p>` : ''}`;
   }
 }
 
@@ -437,6 +460,7 @@ export function buildKeymap(): void {
     ['P', 'lancer'],
     ['B / N', 'avant / après'],
     ['J', 'jeu de données'],
+    ['O', 'modèle entraîné'],
   ];
   $('keymap').innerHTML = keys
     .map(([k, v]) => `<div class="km"><kbd>${k}</kbd>${v}</div>`)

@@ -688,6 +688,12 @@ body {
   color: var(--accent);
   font-variant-numeric: tabular-nums;
 }
+.report-note {
+  margin: 6px 0 0;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--ink-dim);
+}
 
 /* ---------- Galerie ---------- */
 #hud-gallery {
