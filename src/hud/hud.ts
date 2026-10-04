@@ -460,6 +460,7 @@ export function buildKeymap(): void {
     ['P', 'lancer'],
     ['B / N', 'avant / après'],
     ['J', 'jeu de données'],
+    ['MAJ J', 'jeu varié'],
     ['O', 'modèle entraîné'],
   ];
   $('keymap').innerHTML = keys

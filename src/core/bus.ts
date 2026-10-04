@@ -27,8 +27,8 @@ export type AppEvents = {
   'view:toggle-hud': void;
   /** Rétablir et fixer la pleine qualité d'image, ou rendre la main au régulateur. */
   'view:toggle-quality': void;
-  /** Lancer ou arrêter l'export d'un jeu de données annoté. */
-  'dataset:toggle': void;
+  /** Lancer ou arrêter l'export d'un jeu de données annoté, en quadrillage ou varié. */
+  'dataset:toggle': 'grille' | 'variee';
   /** Passer du détecteur simulé au modèle entraîné, et inversement. */
   'model:toggle': void;
   /** Activer ou couper le suivi des mains. */

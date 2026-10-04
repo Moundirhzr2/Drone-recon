@@ -185,6 +185,33 @@ export const CONFIG = {
      * dessous, il est trop coupé pour qu'on le reconnaisse.
      */
     minVisible: 0.3,
+    /**
+     * Campagne variée (Maj+J) : seize scénarios (voir `dataset/variants.ts`),
+     * des images centrées sur les dégâts, à hauteur et cap tirés au hasard.
+     */
+    varied: {
+      /** Hauteurs de vol extrêmes, en mètres : chaque image en tire une entre les deux. */
+      minAltitude: 40,
+      maxAltitude: 90,
+      /** Images centrées sur un bâtiment endommagé, au plus, par scénario. */
+      damageShots: 112,
+      /**
+       * Au plus tant d'images par bâtiment endommagé : un incendie qui s'éteint
+       * vite donnerait sinon cent images du même toit.
+       */
+      shotsPerDamaged: 4,
+      /** Images au-dessus du bâti pris au hasard, en part des images de dégâts. */
+      otherShare: 1 / 3,
+      /** …et au moins autant, pour que chaque scénario montre aussi du bâti intact. */
+      minOtherShots: 20,
+      /**
+       * Chance d'être pris pour cible selon l'état : l'effondrement, rare et
+       * le plus mal reconnu par le premier modèle, est surreprésenté.
+       */
+      weights: { partial: 1, collapsed: 3, burnt: 1.5 },
+      /** Écart maximal entre la cible et le centre de l'image, en part de l'emprise. */
+      offset: 0.35,
+    },
   },
 
   /** Reconnaissance des mains. */

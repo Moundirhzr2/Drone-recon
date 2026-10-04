@@ -5,12 +5,16 @@ entraîner ou évaluer un détecteur de dégâts. Le drone balaie seul toute la 
 pour chacun des quatre aléas, et chaque image part avec l'état exact de chaque
 bâtiment qu'elle montre.
 
+`Maj+J` exporte une [campagne variée](#la-campagne-variée-majj) : seize
+scénarios au lieu de quatre, des images centrées sur les dégâts, à hauteur et
+cap tirés au hasard.
+
 ## Lancer un export
 
 1. Ouvrir le simulateur dans Chrome ou Edge : l'export écrit directement dans un
    dossier de l'ordinateur, ce que seuls ces navigateurs permettent.
-2. Appuyer sur `J`, puis choisir un dossier. Un sous-dossier
-   `drone-recon-<date>-<heure>` y est créé.
+2. Appuyer sur `J` (ou `Maj+J`), puis choisir un dossier. Un sous-dossier
+   `drone-recon-<date>-<heure>` (ou `drone-recon-varie-…`) y est créé.
 3. Laisser la fenêtre visible : le navigateur suspend les pages masquées. La
    progression s'affiche dans le panneau de pilotage. Un nouvel appui sur `J`
    arrête l'export ; les images déjà prises sont conservées, avec leurs
@@ -33,16 +37,52 @@ Avant chaque prise, la vue verticale est rendue jusqu'à ce que le sol soit
 chargé et que les ruines soient construites (`renderer.idle`), trois images de
 suite, sans dépasser huit secondes.
 
+## La campagne variée (Maj+J)
+
+Le premier détecteur, entraîné sur le quadrillage, a trois faiblesses mesurées
+(voir [détecteur entraîné](detecteur-entraine.md)) : il ne trouve qu'un
+effondrement sur trois, il n'a vu qu'une hauteur de vol, et un seul cap. Le
+quadrillage en est la cause : quatre sinistres seulement, toujours les mêmes, et
+un bâtiment sur quatorze endommagé.
+
+La campagne variée y répond.
+
+- **Seize scénarios** (`dataset/variants.ts`) : chaque aléa est joué quatre
+  fois, avec d'autres foyers répartis dans la ville, d'autres intensités et
+  d'autres tirages. Le premier de chaque série reste le scénario par défaut.
+- **Des images centrées sur les dégâts.** Une fois le sinistre joué, la plupart
+  des images visent un bâtiment endommagé tiré au hasard, les effondrés trois
+  fois plus souvent que les partiels ; un quart environ survolent le bâti pris
+  au hasard, pour que le modèle voie aussi des toits intacts.
+- **Hauteur et cap au hasard** : entre 40 et 90 m, dans toutes les directions,
+  avec un décalage de la cible dans le cadre.
+
+Le tirage dépend d'une graine : deux exports donnent les mêmes images.
+
+| Mesure, GTX 1650 de portable | Valeur                            |
+| ---------------------------- | --------------------------------- |
+| Images                       | 2 202, dont 40 à 149 par scénario |
+| Bâtiments annotés            | 39 514                            |
+| Durée                        | 42 minutes                        |
+
+Une inondation peu profonde endommage peu de bâtiments : ses scénarios ont
+moins d'images, car on ne photographie pas cent fois le même toit.
+
+**Les images se recouvrent.** Pour séparer entraînement et validation, il faut
+les regrouper par zone géographique, jamais au hasard : sinon le modèle serait
+validé sur des rues qu'il a déjà vues. `ml/preparer.py` le fait par zones de
+250 m.
+
 ## Les fichiers
 
-| Fichier            | Contenu                                                               |
-| ------------------ | --------------------------------------------------------------------- |
-| `images/`          | les images JPEG, nommées par aléa : `seisme_0001.jpg`…                |
-| `labels/`          | une étiquette YOLO par image : classe, centre et taille, entre 0 et 1 |
-| `data.yaml`        | la configuration YOLO ; aucune séparation entraînement / validation   |
-| `annotations.json` | les mêmes annotations au format COCO, avec le contour du toit         |
-| `metadonnees.csv`  | position, hauteur, cap, emprise et résolution de chaque image         |
-| `LISEZMOI.md`      | la notice du jeu, avec ses chiffres, ses limites et la source à citer |
+| Fichier            | Contenu                                                                                 |
+| ------------------ | --------------------------------------------------------------------------------------- |
+| `images/`          | les images JPEG, nommées par scénario : `seisme_0001.jpg`, `seisme-2_0001.jpg`…         |
+| `labels/`          | une étiquette YOLO par image : classe, centre et taille, entre 0 et 1                   |
+| `data.yaml`        | la configuration YOLO ; aucune séparation entraînement / validation                     |
+| `annotations.json` | les mêmes annotations au format COCO, avec le contour du toit                           |
+| `metadonnees.csv`  | scénario et ses réglages, position, hauteur, cap, emprise et résolution de chaque image |
+| `LISEZMOI.md`      | la notice du jeu, avec ses chiffres, ses limites et la source à citer                   |
 
 Dans le fichier COCO, chaque annotation garde l'identifiant du bâtiment dans la
 BD TOPO®, sa sévérité de 0 à 1 et la part restée dans le cadre.
@@ -88,4 +128,6 @@ réutilisation est libre, à condition de citer la source.
 ## Réglages
 
 Dans `CONFIG.dataset` (`core/config.ts`) : la hauteur du balayage, la taille et
-la qualité des images, et la part minimale d'un bâtiment dans le cadre.
+la qualité des images, et la part minimale d'un bâtiment dans le cadre. La
+section `varied` règle la campagne variée : hauteurs extrêmes, nombre d'images
+par scénario, poids de chaque état dans le tirage des cibles.

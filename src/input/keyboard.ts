@@ -78,8 +78,9 @@ export class KeyboardControl implements ControlSource {
       case 'KeyF':
         emit('view:toggle-quality');
         break;
+      // Maj+J : campagne variée, voir `dataset/campaign.ts`.
       case 'KeyJ':
-        emit('dataset:toggle');
+        emit('dataset:toggle', e.shiftKey ? 'variee' : 'grille');
         break;
       case 'KeyO':
         emit('model:toggle');

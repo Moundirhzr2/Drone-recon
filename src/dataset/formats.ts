@@ -18,6 +18,12 @@ export interface ImageRecord {
   /** Identifiant de l'aléa (`seisme`, `explosion`…) et son nom affiché. */
   scenario: string;
   scenarioLabel: string;
+  /** Scénario précis : l'aléa seul en quadrillage, `seisme-2` en campagne variée. */
+  variant: string;
+  /** Ce scénario en clair : intensité, foyer, tirage. */
+  variantLabel: string;
+  /** Ses réglages, pour pouvoir le rejouer. */
+  params: { magnitude: number; east: number; north: number; windFrom: number; seed: number };
   lon: number;
   lat: number;
   /** Hauteur de la caméra au-dessus du sol, en mètres. */
@@ -92,6 +98,8 @@ export function cocoDocument(records: ImageRecord[], createdAt: Date): unknown {
       height: r.size,
       license: 1,
       scenario: r.scenario,
+      variante: r.variant,
+      graine: r.params.seed,
       longitude: fixed(r.lon, 7),
       latitude: fixed(r.lat, 7),
       altitude_sol_m: fixed(r.agl, 1),
@@ -124,6 +132,12 @@ export function metadataCsv(records: ImageRecord[]): string {
   const header = [
     'image',
     'scenario',
+    'variante',
+    'grandeur',
+    'foyer_est_m',
+    'foyer_nord_m',
+    'vent_deg',
+    'graine',
     'longitude',
     'latitude',
     'altitude_sol_m',
@@ -137,6 +151,12 @@ export function metadataCsv(records: ImageRecord[]): string {
     [
       r.file,
       r.scenario,
+      r.variant,
+      r.params.magnitude,
+      r.params.east,
+      r.params.north,
+      r.params.windFrom,
+      r.params.seed,
       r.lon.toFixed(7),
       r.lat.toFixed(7),
       r.agl.toFixed(1),
@@ -152,7 +172,10 @@ export function metadataCsv(records: ImageRecord[]): string {
 
 export interface ReadmeSettings {
   createdAt: Date;
-  altitude: number;
+  /** Quadrillage à hauteur fixe, ou campagne variée. */
+  campaign: 'grille' | 'variee';
+  /** Hauteurs de vol extrêmes, en mètres : deux fois la même pour le quadrillage. */
+  altitudes: [number, number];
   imageSize: number;
   fov: number;
   minVisible: number;
@@ -164,17 +187,43 @@ export function readme(records: ImageRecord[], settings: ReadmeSettings): string
   const counts = new Map(DAMAGE_ORDER.map((s) => [s, 0]));
   for (const r of records)
     for (const a of r.annotations) counts.set(a.state, counts.get(a.state)! + 1);
-  const byScenario = new Map<string, { label: string; images: number }>();
+  const byVariant = new Map<string, { label: string; images: number }>();
   for (const r of records) {
-    const entry = byScenario.get(r.scenario) ?? { label: r.scenarioLabel, images: 0 };
+    const entry = byVariant.get(r.variant) ?? { label: r.variantLabel, images: 0 };
     entry.images++;
-    byScenario.set(r.scenario, entry);
+    byVariant.set(r.variant, entry);
   }
-  const gsd = records[0]?.gsd ?? 0;
-  const footprint = records[0]?.footprint ?? 0;
   const total = [...counts.values()].reduce((a, b) => a + b, 0);
   const fr = (v: number, digits = 0) =>
     v.toLocaleString('fr-FR', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  /** Une valeur, ou son étendue quand elle varie d'une image à l'autre. */
+  const span = (values: number[], digits: number) => {
+    const low = fr(Math.min(...values), digits);
+    const high = fr(Math.max(...values), digits);
+    return low === high ? low : `de ${low} à ${high}`;
+  };
+
+  const varied = settings.campaign === 'variee';
+  const [lowest, highest] = settings.altitudes;
+  const view = varied
+    ? `verticale, cap tiré au hasard, entre ${lowest} et ${highest} m du sol, champ de ${settings.fov}°`
+    : `verticale, nord en haut, à ${lowest} m du sol, champ de ${settings.fov}°`;
+  const footprints = records.length ? records.map((r) => r.footprint) : [0];
+  const gsds = records.length ? records.map((r) => r.gsd) : [0];
+  const method = varied
+    ? `Chaque aléa est joué quatre fois — d'autres foyers, intensités et tirages —,
+depuis la ville intacte, puis photographié à son état final. La plupart des
+images sont centrées sur un bâtiment endommagé tiré au hasard, les effondrés
+plus souvent que les autres, avec un décalage, un cap et une hauteur eux aussi
+tirés au hasard ; les autres survolent le bâti, pris au hasard.
+
+Les images se recouvrent. Pour séparer entraînement et validation, il faut les
+regrouper par zone géographique (\`metadonnees.csv\` donne la position de
+chacune), jamais au hasard : sinon le modèle serait validé sur des rues qu'il a
+déjà vues.`
+    : `Chaque aléa est joué avec ses réglages par défaut, depuis la ville intacte, puis
+photographié à son état final. La zone est balayée en quadrillage, sans
+recouvrement ; une case sans bâtiment n'est pas photographiée.`;
 
   return `# Drone Recon — jeu de données
 
@@ -188,16 +237,14 @@ ${settings.createdAt.toLocaleString('fr-FR')}.${settings.complete ? '' : '\n\n**
 | --- | --- |
 | Images | ${fr(records.length)}, ${settings.imageSize} × ${settings.imageSize} px, JPEG |
 | Bâtiments annotés | ${fr(total)} |
-| Prise de vue | verticale, nord en haut, à ${settings.altitude} m du sol, champ de ${settings.fov}° |
-| Emprise d'une image | ${fr(footprint, 1)} m de côté, soit ${fr(gsd, 1)} cm par pixel |
+| Prise de vue | ${view} |
+| Emprise d'une image | ${span(footprints, 1)} m de côté, soit ${span(gsds, 1)} cm par pixel |
 
-| Aléa | Images |
+| ${varied ? 'Scénario' : 'Aléa'} | Images |
 | --- | --- |
-${[...byScenario.values()].map((s) => `| ${s.label} | ${fr(s.images)} |`).join('\n')}
+${[...byVariant.values()].map((s) => `| ${s.label} | ${fr(s.images)} |`).join('\n')}
 
-Chaque aléa est joué avec ses réglages par défaut, depuis la ville intacte, puis
-photographié à son état final. La zone est balayée en quadrillage, sans
-recouvrement ; une case sans bâtiment n'est pas photographiée.
+${method}
 
 ## Fichiers
 
@@ -209,7 +256,8 @@ recouvrement ; une case sans bâtiment n'est pas photographiée.
 - \`annotations.json\` : les mêmes annotations au format COCO, avec le contour
   du toit (\`segmentation\`) et, pour chaque bâtiment, son identifiant, sa
   sévérité de 0 à 1 et la part restée dans le cadre.
-- \`metadonnees.csv\` : position, hauteur, cap et résolution de chaque image.
+- \`metadonnees.csv\` : scénario, position, hauteur, cap et résolution de chaque
+  image.
 
 ## Classes
 

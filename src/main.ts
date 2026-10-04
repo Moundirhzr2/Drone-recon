@@ -317,7 +317,7 @@ async function main(): Promise<void> {
     restoreView: syncViews,
     report: (text, kind) => handsPanel.setMessage(text, kind ?? 'info'),
   });
-  on('dataset:toggle', () => dataset.toggle());
+  on('dataset:toggle', (mode) => dataset.toggle(mode));
 
   on('disaster:toggle-play', () => {
     disasterPanel.open();

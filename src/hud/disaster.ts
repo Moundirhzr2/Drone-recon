@@ -198,6 +198,20 @@ export class DisasterPanel {
     this.refresh();
   }
 
+  /**
+   * Prépare un scénario précis — foyer, intensité, vent, tirage — au lieu des
+   * réglages par défaut de son aléa. Sert aux campagnes de prise de vue.
+   */
+  useScenario(scenario: Scenario): void {
+    this.selectKind(scenario.kind);
+    this.scenario = { ...scenario };
+    this.mag.value = String(scenario.magnitude);
+    this.magValue.textContent = this.formatMagnitude();
+    this.wind.value = String(scenario.windFrom);
+    this.windValue.textContent = `${scenario.windFrom}°`;
+    this.refresh();
+  }
+
   /** Construit la chronologie et l'arme, sans la jouer. */
   private arm(): Timeline {
     const baseline = Object.fromEntries(DAMAGE_ORDER.map((s) => [s, 0])) as Record<
