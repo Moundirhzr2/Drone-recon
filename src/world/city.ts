@@ -109,6 +109,8 @@ const LANDMARKS: Array<{
 
 /** État du monde : la liste des bâtiments, plus les repères de la ville. */
 export interface City {
+  /** Nom de la zone, repris dans les scénarios enregistrés. */
+  name: string;
   buildings: Building[];
   center: { lon: number; lat: number };
   ground: number;
@@ -280,6 +282,7 @@ export function generateCity(): City {
 
   return {
     buildings,
+    name: 'Ville générée',
     center: { lon: CONFIG.city.lon, lat: CONFIG.city.lat },
     ground,
   };

@@ -41,6 +41,9 @@ export class KeyboardControl implements ControlSource {
 
   private onDown = (e: KeyboardEvent): void => {
     if (e.repeat) return;
+    // Pendant la saisie d'un texte (le nom d'un scénario), les lettres sont du
+    // texte, pas des commandes.
+    if (e.target instanceof HTMLElement && e.target.matches('input[type="text"], textarea')) return;
     if (AXES[e.code]) {
       this.down.add(e.code);
       e.preventDefault();
@@ -84,6 +87,9 @@ export class KeyboardControl implements ControlSource {
         break;
       case 'KeyO':
         emit('model:toggle');
+        break;
+      case 'KeyE':
+        emit('editor:toggle');
         break;
       case 'KeyR':
         emit('drone:reset');

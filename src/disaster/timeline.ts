@@ -53,7 +53,8 @@ interface Snapshot {
 }
 
 export interface Timeline {
-  scenario: Scenario;
+  /** L'aléa ; `null` quand il n'y a que des dégâts posés à la main (`manual.ts`). */
+  scenario: Scenario | null;
   duration: number;
   events: DamageEvent[];
   /** État de la ville avant le sinistre, pour pouvoir revenir en arrière. */

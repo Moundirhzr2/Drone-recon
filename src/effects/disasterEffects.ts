@@ -403,8 +403,8 @@ export class DisasterEffects {
 
     const t = player.time;
     const s = tl.scenario;
-    if (s.kind === 'inondation') this.updateFlood(s, t);
-    if (s.kind === 'explosion') this.updateBlast(s, t, player);
+    if (s?.kind === 'inondation') this.updateFlood(s, t);
+    if (s?.kind === 'explosion') this.updateBlast(s, t, player);
 
     // Les incendies ne sont pas réservés au scénario « incendie » : un séisme
     // ou une explosion en allument aussi, par les réseaux de gaz.
@@ -500,8 +500,8 @@ export class DisasterEffects {
    */
   shake(camera: Cesium.Camera, player: DisasterPlayer): void {
     const tl = player.current;
-    if (!tl || tl.scenario.kind !== 'seisme' || !player.playing) return;
-    const s = tl.scenario;
+    const s = tl?.scenario;
+    if (!s || s.kind !== 'seisme' || !player.playing) return;
     const t = player.time;
     const strong = s.duration * 0.34;
     const envelope =
@@ -540,8 +540,8 @@ export class DisasterEffects {
   // ------------------------------------------------------------------------
 
   private prepare(tl: Timeline): void {
-    if (tl.scenario.kind === 'inondation') this.prepareFlood();
-    if (tl.scenario.kind === 'explosion') this.prepareBlast(tl.scenario);
+    if (tl.scenario?.kind === 'inondation') this.prepareFlood();
+    if (tl.scenario?.kind === 'explosion') this.prepareBlast(tl.scenario);
   }
 
   private reset(): void {

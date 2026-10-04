@@ -31,6 +31,8 @@ export type AppEvents = {
   'dataset:toggle': 'grille' | 'variee';
   /** Passer du détecteur simulé au modèle entraîné, et inversement. */
   'model:toggle': void;
+  /** Entrer dans la sélection de bâtiments à endommager, ou en sortir. */
+  'editor:toggle': void;
   /** Activer ou couper le suivi des mains. */
   'hands:toggle': void;
   /** Relancer le calibrage des mains. */

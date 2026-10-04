@@ -113,7 +113,10 @@ export function drawNadirOverlay(
 }
 
 /** Position écran d'un point, quelle que soit la version de Cesium. */
-function toWindow(scene: Cesium.Scene, position: Cesium.Cartesian3): Cesium.Cartesian2 | undefined {
+export function toWindow(
+  scene: Cesium.Scene,
+  position: Cesium.Cartesian3,
+): Cesium.Cartesian2 | undefined {
   const T = Cesium.SceneTransforms as unknown as Record<string, unknown>;
   const fn = (T.worldToWindowCoordinates ?? T.wgs84ToWindowCoordinates) as
     ((s: Cesium.Scene, p: Cesium.Cartesian3) => Cesium.Cartesian2 | undefined) | undefined;

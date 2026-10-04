@@ -41,6 +41,8 @@ import { compareToTruth, describe, rescale, TrainedDetector } from './diagnostic
 import { drawMainOverlay, drawNadirOverlay } from './diagnostic/overlay';
 import { runTour } from './demo/tour';
 import { DatasetCampaign } from './dataset/campaign';
+import { BuildingEditor } from './hud/editor';
+import { downloadScenario, pickScenarioFile, scenarioFileName } from './disaster/scenarioFile';
 import {
   boot,
   buildKeymap,
@@ -157,6 +159,58 @@ async function main(): Promise<void> {
       renderer.sync();
       photoreal?.sync();
     },
+    // Scénario annulé ou remplacé : la sélection de bâtiments ne vaut plus.
+    onCleared: () => editor.clear(),
+  });
+
+  // --- Dégâts posés à la main (touche E) : voir `hud/editor.ts` --------------
+  const editor = new BuildingEditor({
+    scene,
+    city,
+    panel: disasterPanel,
+    report: (text, kind) => handsPanel.setMessage(text, kind ?? 'info'),
+  });
+  on('editor:toggle', () => editor.toggle());
+
+  // --- Scénarios en JSON : voir `disaster/scenarioFile.ts` -------------------
+  const scenarioName = document.getElementById('dis-file-name') as HTMLInputElement;
+  document.getElementById('dis-save')?.addEventListener('click', () => {
+    const s = drone.state;
+    const name = scenarioName.value.trim() || `Scénario du ${new Date().toLocaleString('fr-FR')}`;
+    // Le point de vue part avec le scénario : on retrouvera la même
+    // comparaison avant / après.
+    downloadScenario(
+      disasterPanel.exportScenario(name, {
+        lon: s.lon,
+        lat: s.lat,
+        agl: s.agl,
+        heading: s.heading,
+      }),
+    );
+    handsPanel.setMessage(`Scénario enregistré : ${scenarioFileName(name)}`, 'ok');
+  });
+  document.getElementById('dis-load')?.addEventListener('click', () => {
+    void pickScenarioFile().then((text) => {
+      if (!text) return;
+      try {
+        const { file, missing } = disasterPanel.importScenario(text);
+        scenarioName.value = file.name;
+        const v = file.viewpoint;
+        if (v) {
+          Object.assign(drone.state, { ...v, vEast: 0, vNorth: 0, vUp: 0 });
+          drone.state.msl = groundAt(v.lon, v.lat) + v.agl;
+          camera.snap();
+        }
+        const skipped = missing ? ` (${missing} bâtiment(s) inconnu(s) ignoré(s))` : '';
+        handsPanel.setMessage(
+          `Scénario « ${file.name} » chargé${skipped} — B / N pour comparer`,
+          'ok',
+        );
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        handsPanel.setMessage(`Scénario illisible : ${reason}`, 'err');
+      }
+    });
   });
   const noResult = (): DiagnosticResult => ({
     detections: [],
@@ -462,7 +516,8 @@ async function main(): Promise<void> {
     // compilée, donc après au moins une passe de rendu.
     renderer.tick();
 
-    if (now - lastMainOverlay > 125) {
+    // Une sélection de bâtiments suit la caméra : redessinée à chaque image.
+    if (now - lastMainOverlay > 125 || editor.selection.size > 0) {
       lastMainOverlay = now;
       drawMainOverlay(
         mainOverlay,
@@ -472,6 +527,7 @@ async function main(): Promise<void> {
         drone.state.lat,
         diagnostic,
       );
+      editor.draw(mainOverlay);
     }
 
     // --- Qualité adaptative -------------------------------------------------
@@ -566,6 +622,7 @@ async function main(): Promise<void> {
       quality,
       photoreal,
       dataset,
+      editor,
       trained,
       step: (n?: number) => step(n ?? performance.now()),
       get diagnostic() {

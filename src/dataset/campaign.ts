@@ -340,8 +340,10 @@ export class DatasetCampaign {
     const records: ImageRecord[] = [];
     let finished = false;
 
-    // Le drone ne doit pas partir sur une touche pressée pendant la campagne.
+    // Le drone ne doit pas partir sur une touche pressée pendant la campagne,
+    // et la campagne part de la ville intacte, sans dégâts posés à la main.
     drone.holding = true;
+    panel.cancel();
     this.hooks.prepareView();
     try {
       for (const [index, pass] of passes.entries()) {

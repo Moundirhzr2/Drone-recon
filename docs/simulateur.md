@@ -247,3 +247,82 @@ se fissure, s'effondre partiellement, puis cède. La chronologie restitue ces
 
 Le coût des reconstructions de géométrie pendant la lecture est détaillé dans
 [performance](performance.md#reconstructions-pendant-un-sinistre).
+
+## Dégâts posés à la main
+
+![Deux bâtiments effondrés et un incendié, posés à la main : le bâtiment sélectionné est entouré en cyan, le panneau montre les boutons d'état et le bilan](images/13-degats-a-la-main.jpg)
+
+Au-delà des quatre aléas, on peut choisir soi-même les bâtiments touchés.
+
+1. `E` (ou « Sélectionner » dans le panneau) passe en sélection : le curseur
+   devient un réticule.
+2. Un clic sur la vue choisit le bâtiment visé ; `Maj` + clic en ajoute ou en
+   retire un ; un clic dans le vide vide la sélection. Les bâtiments choisis
+   sont entourés en cyan, au niveau de leur toit.
+3. Les boutons du panneau leur donnent un état, par gravité croissante :
+   fissuré, effondrement partiel (toit écrêté, premiers gravats), effondré (tas
+   de gravats), ou incendié (façade noircie, flammes puis fumée). « Réparer »
+   les remet intacts.
+
+Le bâtiment visé est trouvé par la profondeur de l'image sous le curseur, puis
+par le contour de l'IGN qui contient ce point : la sélection marche aussi bien
+sur la ville dessinée que sur le relevé photoréaliste de Google.
+
+Ces dégâts deviennent des événements de la chronologie, placés après ceux de
+l'aléa : ils ont le dernier mot sur un bâtiment que l'aléa avait aussi touché.
+L'avant / après, la lecture, la poussière des effondrements, les flammes et le
+bilan s'appliquent donc à eux comme à un aléa. Sans aléa (« Aucun aléa »), ils
+se produisent l'un après l'autre en deux secondes. Avec un aléa, ils
+s'ajoutent à lui : on peut jouer une explosion, puis effondrer à la main un
+bâtiment qu'elle avait épargné.
+
+Un fissuré reste dessiné comme un bâtiment intact : une fissure ne se voit pas
+du ciel à cette échelle. C'est aussi ce qui le rend invisible au détecteur
+entraîné (voir [détecteur entraîné](detecteur-entraine.md)).
+
+## Scénarios en JSON
+
+Le panneau enregistre le scénario en cours dans un fichier JSON, et en
+recharge un : de quoi le garder, le rejouer ou le partager.
+
+```json
+{
+  "format": "drone-recon/scenario",
+  "version": 1,
+  "name": "Exemple : explosion et dégâts posés à la main",
+  "city": { "name": "Mulhouse — centre", "lon": 7.3389, "lat": 47.7466 },
+  "hazard": {
+    "kind": "explosion",
+    "magnitude": 1,
+    "east": 60,
+    "north": 40,
+    "windFrom": 225,
+    "seed": 7301,
+    "duration": 20
+  },
+  "buildings": [
+    { "id": "BATIMENT0000000228119335", "state": "collapsed", "name": "Immeuble résidentiel" }
+  ],
+  "viewpoint": { "lon": 7.3370297, "lat": 47.7450729, "agl": 70, "heading": 20 }
+}
+```
+
+| Champ       | Contenu                                                                     |
+| ----------- | --------------------------------------------------------------------------- |
+| `hazard`    | l'aléa et ses réglages, ou `null` pour des dégâts posés à la main seulement |
+| `buildings` | les dégâts posés à la main : identifiant BD TOPO® et état                   |
+| `viewpoint` | la position, la hauteur et le cap du drone à l'enregistrement               |
+| `city`      | la ville du scénario ; un scénario fait ailleurs est refusé                 |
+
+L'aléa n'est décrit que par ses réglages et sa graine : la chronologie est
+déterministe, et elle se reconstruit à l'identique au chargement, sans qu'il
+faille enregistrer l'état de deux mille bâtiments. Les bâtiments sont désignés
+par leur identifiant dans la BD TOPO®, qui ne change pas si l'on retélécharge
+les données.
+
+Au chargement, chaque champ est vérifié ; un fichier mal formé est refusé avec
+la raison (« aléa inconnu », grandeur hors limites…), et un bâtiment inconnu
+est ignoré et signalé. Le drone rejoint le point de vue enregistré, et la vue
+montre l'état final : `B` / `N` pour comparer avant et après.
+
+Un exemple : [`scenarios/exemple-explosion.json`](../scenarios/exemple-explosion.json).

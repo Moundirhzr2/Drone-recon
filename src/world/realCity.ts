@@ -48,7 +48,7 @@ interface RawBuilding {
 }
 
 interface RawFile {
-  zone: { lat: number; lon: number; halfSize: number };
+  zone: { name?: string; lat: number; lon: number; halfSize: number };
   attribution: string;
   buildings: RawBuilding[];
 }
@@ -356,6 +356,7 @@ export async function loadRealCity(
   );
 
   return {
+    name: zone.name ?? 'Ville réelle',
     buildings,
     center: { lon: zone.lon, lat: zone.lat },
     ground: relief?.median ?? CONFIG.city.groundHeight,

@@ -41,7 +41,7 @@ export interface Annotation {
 type Point = [number, number];
 
 /** Contour extérieur au sol, en mètres (est, nord) autour du centre. */
-function outline(b: Building): Point[] {
+export function outline(b: Building): Point[] {
   if (b.footprint?.[0]?.length) return b.footprint[0];
   // Bâtiment généré : son rectangle orienté, comme le détecteur.
   const cos = Math.cos(b.heading * DEG);

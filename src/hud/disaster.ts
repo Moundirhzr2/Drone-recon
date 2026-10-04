@@ -10,6 +10,11 @@
  * ne dit rien si on ignore qu'il y en avait déjà 6. C'est le « +8 » qui porte
  * l'information, et c'est lui qu'on veut lire pendant que le sinistre se
  * déroule.
+ *
+ * Un scénario, c'est un aléa — ou aucun — plus des dégâts posés à la main sur
+ * des bâtiments choisis (`editor.ts`, `disaster/manual.ts`). Le panneau en
+ * construit une seule chronologie, et sait l'enregistrer en JSON et la
+ * recharger (`disaster/scenarioFile.ts`).
  */
 
 import { DAMAGE_INFO, DAMAGE_ORDER, type DamageState } from '../world/buildings';
@@ -17,6 +22,14 @@ import type { City } from '../world/city';
 import { DISASTERS, defaultScenario, type DisasterKind, type Scenario } from '../disaster/scenario';
 import { buildTimeline, type Timeline } from '../disaster/timeline';
 import type { DisasterPlayer } from '../disaster/timeline';
+import { withManualEdits, type ManualEdits } from '../disaster/manual';
+import {
+  parseScenarioFile,
+  toScenarioFile,
+  type ParsedScenario,
+  type ScenarioFile,
+  type Viewpoint,
+} from '../disaster/scenarioFile';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -32,6 +45,8 @@ export interface DisasterPanelHooks {
   onRebuild: () => void;
   /** Appelé quand un scénario est armé ou annulé. */
   onArmed?: (armed: boolean) => void;
+  /** Appelé quand le scénario est annulé ou remplacé : la sélection n'a plus de sens. */
+  onCleared?: () => void;
 }
 
 export class DisasterPanel {
@@ -56,8 +71,12 @@ export class DisasterPanel {
   private tally = $('dis-tally');
   private note = $('dis-note');
 
-  private kind: DisasterKind = 'seisme';
+  /** L'aléa choisi ; `null` : aucun, seulement des dégâts posés à la main. */
+  private kind: DisasterKind | null = 'seisme';
   private scenario: Scenario = defaultScenario('seisme');
+  /** Dégâts posés à la main, ajoutés à l'aléa. */
+  private edits: ManualEdits = new Map();
+  private magField = this.mag.closest('.dis-field') as HTMLElement;
   /** Décompte des états avant le sinistre, pour afficher l'écart. */
   private baseline: Record<DamageState, number> | null = null;
   /** L'utilisateur déplace le curseur : on ne le réécrit pas sous ses doigts. */
@@ -90,6 +109,13 @@ export class DisasterPanel {
       b.addEventListener('click', () => this.selectKind(k));
       this.kindsBox.appendChild(b);
     });
+    const none = document.createElement('button');
+    none.className = 'dis-kind';
+    none.dataset.kind = '';
+    none.textContent = 'Aucun aléa';
+    none.title = 'Seulement les dégâts posés à la main (touche E)';
+    none.addEventListener('click', () => this.selectKind(null));
+    this.kindsBox.appendChild(none);
   }
 
   private buildTally(): void {
@@ -172,9 +198,25 @@ export class DisasterPanel {
     return this.kind === 'seisme' ? m.toFixed(1) : `${m}`;
   }
 
-  selectKind(kind: DisasterKind): void {
-    this.cancel();
+  /**
+   * Choisit l'aléa, ou aucun. Les dégâts posés à la main sont gardés : on peut
+   * changer d'aléa sous eux.
+   */
+  selectKind(kind: DisasterKind | null): void {
+    this.disarm();
     this.kind = kind;
+    for (const b of Array.from(this.kindsBox.children) as HTMLElement[]) {
+      b.classList.toggle('on', b.dataset.kind === (kind ?? ''));
+    }
+    if (!kind) {
+      this.magField.style.display = 'none';
+      this.windField.style.display = 'none';
+      this.blurb.textContent =
+        'Aucun aléa : seulement les dégâts posés à la main. E, puis clic sur les bâtiments.';
+      this.refresh();
+      return;
+    }
+    this.magField.style.display = '';
     this.scenario = defaultScenario(kind);
 
     const meta = DISASTERS[kind];
@@ -191,10 +233,6 @@ export class DisasterPanel {
     this.windField.style.display = kind === 'incendie' ? '' : 'none';
     this.wind.value = String(this.scenario.windFrom);
     this.windValue.textContent = `${this.scenario.windFrom}°`;
-
-    for (const b of Array.from(this.kindsBox.children) as HTMLElement[]) {
-      b.classList.toggle('on', b.dataset.kind === kind);
-    }
     this.refresh();
   }
 
@@ -212,8 +250,11 @@ export class DisasterPanel {
     this.refresh();
   }
 
-  /** Construit la chronologie et l'arme, sans la jouer. */
-  private arm(): Timeline {
+  /**
+   * Construit la chronologie — l'aléa, puis les dégâts posés à la main — et
+   * l'arme, sans la jouer. `null` s'il n'y a ni aléa ni dégât.
+   */
+  private arm(): Timeline | null {
     const baseline = Object.fromEntries(DAMAGE_ORDER.map((s) => [s, 0])) as Record<
       DamageState,
       number
@@ -221,7 +262,12 @@ export class DisasterPanel {
     for (const b of this.city.buildings) baseline[b.state]++;
     this.baseline = baseline;
 
-    const timeline = buildTimeline(this.city, this.scenario);
+    const base = this.kind ? buildTimeline(this.city, this.scenario) : null;
+    const timeline = withManualEdits(this.city, base, this.edits);
+    if (!timeline) {
+      this.baseline = null;
+      return null;
+    }
     this.player.load(timeline);
     this.hooks.onArmed?.(true);
     return timeline;
@@ -240,8 +286,8 @@ export class DisasterPanel {
   // ----------------------------------------------------------------------
 
   togglePlay(): void {
-    let tl = this.player.current;
-    if (!tl) tl = this.arm();
+    const tl = this.player.current ?? this.arm();
+    if (!tl) return;
 
     if (this.player.finished) {
       // Relancer depuis la fin : on repart du début plutôt que de ne rien faire.
@@ -252,20 +298,72 @@ export class DisasterPanel {
   }
 
   jump(where: 'start' | 'end'): void {
-    if (!this.player.current) this.arm();
+    if (!this.player.current && !this.arm()) return;
     this.player.playing = false;
     const changed = where === 'end' ? this.player.jumpToEnd() : this.player.jumpToStart();
     if (changed) this.hooks.onRebuild();
     this.refresh();
   }
 
+  /** Annule tout : l'aléa et les dégâts posés à la main. La ville redevient intacte. */
   cancel(): void {
+    this.edits.clear();
     this.disarm();
+    this.hooks.onCleared?.();
   }
 
   cycleKind(delta: number): void {
-    const i = (KINDS.indexOf(this.kind) + delta + KINDS.length) % KINDS.length;
+    const from = this.kind ? KINDS.indexOf(this.kind) : -1;
+    const i = (from + delta + KINDS.length) % KINDS.length;
     this.selectKind(KINDS[i]);
+  }
+
+  // ----------------------------------------------------------------------
+  // Dégâts posés à la main, et fichiers de scénario
+  // ----------------------------------------------------------------------
+
+  /** Nombre de bâtiments touchés à la main. */
+  get editCount(): number {
+    return this.edits.size;
+  }
+
+  /**
+   * Pose un état sur des bâtiments, puis montre le résultat (vue « après »).
+   * Sans aléa armé, ce sont des dégâts à la main seuls : on ne déclenche pas
+   * l'aléa resté sélectionné dans le panneau.
+   */
+  applyEdits(ids: string[], state: DamageState): void {
+    if (!ids.length) return;
+    if (!this.player.current && this.kind) this.selectKind(null);
+    for (const id of ids) {
+      // Sans aléa, « intact » revient à retirer le dégât posé ; avec un aléa,
+      // c'est une réparation qui l'emporte sur lui.
+      if (state === 'intact' && !this.kind) this.edits.delete(id);
+      else this.edits.set(id, state);
+    }
+    this.disarm();
+    if (this.kind || this.edits.size) this.jump('end');
+  }
+
+  /** Le scénario en cours, prêt à être enregistré. */
+  exportScenario(name: string, viewpoint?: Viewpoint, description?: string): ScenarioFile {
+    const hazard = this.kind ? this.scenario : null;
+    return toScenarioFile(this.city, name, hazard, this.edits, viewpoint, description);
+  }
+
+  /**
+   * Charge un scénario lu dans un fichier et montre son état final.
+   * @throws Error avec un message lisible si le fichier n'est pas valide.
+   */
+  importScenario(text: string): ParsedScenario {
+    const parsed = parseScenarioFile(text, this.city);
+    this.cancel();
+    if (parsed.file.hazard) this.useScenario(parsed.file.hazard);
+    else this.selectKind(null);
+    this.edits = new Map(parsed.edits);
+    this.open();
+    this.jump('end');
+    return parsed;
   }
 
   pickKind(index: number): void {
@@ -308,7 +406,15 @@ export class DisasterPanel {
       put(this.timeLabel, '0.0 s');
       put(this.ofLabel, '/ 0 s');
       this.writeTally(null);
-      put(this.note, 'Choisir un aléa, puis Lancer.');
+      const n = this.edits.size;
+      put(
+        this.note,
+        n
+          ? `${n} dégât${n > 1 ? 's' : ''} posé${n > 1 ? 's' : ''} à la main. Lancer, ou Après pour voir.`
+          : this.kind
+            ? 'Choisir un aléa, puis Lancer.'
+            : 'E, puis clic sur les bâtiments à endommager.',
+      );
       this.note.className = 'dis-note';
       return;
     }
@@ -316,20 +422,25 @@ export class DisasterPanel {
     const t = this.player.time;
     if (!this.scrubbing) this.scrub.value = String(Math.round((t / tl.duration) * 1000));
     put(this.timeLabel, `${t.toFixed(1)} s`);
-    put(this.ofLabel, `/ ${tl.duration} s`);
+    // Une durée posée à la main n’est pas ronde (3,75 s) : même arrondi que le temps.
+    put(
+      this.ofLabel,
+      `/ ${Number.isInteger(tl.duration) ? tl.duration : tl.duration.toFixed(1)} s`,
+    );
 
     this.writeTally(this.liveCounts());
 
     if (playing) {
       this.note.className = 'dis-note hot';
-      put(this.note, `${DISASTERS[this.kind].label} en cours…`);
+      put(this.note, `${this.kind ? DISASTERS[this.kind].label : 'Sinistre'} en cours…`);
     } else if (this.player.finished) {
       this.note.className = 'dis-note ok';
+      const byHand = this.edits.size ? `, dont ${this.edits.size} à la main` : '';
       put(
         this.note,
         `Bilan : ${tl.affected} bâtiment${tl.affected > 1 ? 's' : ''} touché${
           tl.affected > 1 ? 's' : ''
-        } sur ${this.city.buildings.length}.`,
+        } sur ${this.city.buildings.length}${byHand}.`,
       );
     } else {
       this.note.className = 'dis-note';

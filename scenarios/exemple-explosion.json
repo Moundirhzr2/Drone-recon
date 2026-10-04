@@ -1,0 +1,44 @@
+{
+  "format": "drone-recon/scenario",
+  "version": 1,
+  "name": "Exemple : explosion et dégâts posés à la main",
+  "description": "Explosion d’une tonne de TNT près de la place de la Réunion (scénario par défaut, graine 7301), puis trois dégâts posés à la main, 200 m plus à l’ouest : un effondrement, un effondrement partiel et un incendie. Le point de vue montre les deux zones.",
+  "createdAt": "2026-10-04T18:38:25.167Z",
+  "city": {
+    "name": "Mulhouse — centre",
+    "lon": 7.3389,
+    "lat": 47.7466
+  },
+  "hazard": {
+    "kind": "explosion",
+    "magnitude": 1,
+    "east": 60,
+    "north": 40,
+    "windFrom": 225,
+    "seed": 7301,
+    "duration": 20
+  },
+  "buildings": [
+    {
+      "id": "BATIMENT0000000228119335",
+      "state": "collapsed",
+      "name": "Immeuble résidentiel"
+    },
+    {
+      "id": "BATIMENT0000000228119342",
+      "state": "partial",
+      "name": "Commerces et services"
+    },
+    {
+      "id": "BATIMENT0000000228119343",
+      "state": "burnt",
+      "name": "Immeuble résidentiel"
+    }
+  ],
+  "viewpoint": {
+    "lon": 7.3370297,
+    "lat": 47.7450729,
+    "agl": 70,
+    "heading": 20
+  }
+}

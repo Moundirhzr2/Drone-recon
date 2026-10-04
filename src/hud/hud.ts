@@ -458,6 +458,7 @@ export function buildKeymap(): void {
     ['R', 'retour base'],
     ['1-4', 'aléa'],
     ['P', 'lancer'],
+    ['E', 'dégâts à la main'],
     ['B / N', 'avant / après'],
     ['J', 'jeu de données'],
     ['MAJ J', 'jeu varié'],

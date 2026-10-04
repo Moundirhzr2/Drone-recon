@@ -74,6 +74,9 @@ travaux peut s'y substituer sans toucher au reste.
   précision et rappel calculés en direct contre la vérité terrain.
 - **Simulateur de désastres** — quatre aléas physiquement fondés, une courbe de
   fragilité commune, une chronologie rejouable et parcourable dans les deux sens.
+  On peut aussi choisir les bâtiments à la souris et leur donner un état, de
+  fissuré à effondré, ou incendié, puis enregistrer le scénario en JSON pour le
+  recharger ou le partager.
 - **Export d'un jeu de données** — touche `J` : le drone balaie seul la zone
   pour chaque aléa et enregistre un millier d'images verticales annotées, aux
   formats YOLO et COCO, prêtes pour entraîner un détecteur. `Maj+J` lance une
@@ -145,6 +148,7 @@ mains ouvertes et immobiles pendant les trois secondes de calibrage.
 | `P`              | lancer ou mettre en pause le sinistre                     |
 | `B` / `N`        | sauter avant / après le sinistre                          |
 | `Retour arrière` | annuler le sinistre                                       |
+| `E`              | choisir des bâtiments à endommager (clic, `Maj` + clic)   |
 | `J`              | exporter un jeu de données annoté (Chrome ou Edge)        |
 | `Maj` + `J`      | exporter la campagne variée                               |
 | `O`              | passer au détecteur entraîné, ou revenir au simulé        |
@@ -222,16 +226,16 @@ l'eau.
 
 ## Documentation
 
-| Document                                         | Contenu                                                                          |
-| ------------------------------------------------ | -------------------------------------------------------------------------------- |
-| [Données](docs/donnees.md)                       | sources IGN, traitements, corrections, licence                                   |
-| [Architecture](docs/architecture.md)             | organisation du code, boucle de rendu, repère local de Cesium, textures          |
-| [Simulateur de désastres](docs/simulateur.md)    | courbe de fragilité, physique, calage et effets des quatre aléas                 |
-| [Diagnostic](docs/diagnostic.md)                 | fonctionnement du détecteur, métriques, fonds de scène                           |
-| [Jeu de données](docs/jeu-de-donnees.md)         | balayage automatique, formats YOLO et COCO, classes, limites                     |
-| [Détecteur entraîné](docs/detecteur-entraine.md) | entraînement, export ONNX, exécution dans le navigateur, résultats, autre modèle |
-| [Pilotage gestuel](docs/pilotage-gestuel.md)     | gestes, choix des deux mains, réglage de la réactivité                           |
-| [Performance](docs/performance.md)               | profils de qualité, mesures, pièges de Cesium                                    |
+| Document                                         | Contenu                                                                                                       |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| [Données](docs/donnees.md)                       | sources IGN, traitements, corrections, licence                                                                |
+| [Architecture](docs/architecture.md)             | organisation du code, boucle de rendu, repère local de Cesium, textures                                       |
+| [Simulateur de désastres](docs/simulateur.md)    | courbe de fragilité, physique, calage et effets des quatre aléas ; dégâts posés à la main ; scénarios en JSON |
+| [Diagnostic](docs/diagnostic.md)                 | fonctionnement du détecteur, métriques, fonds de scène                                                        |
+| [Jeu de données](docs/jeu-de-donnees.md)         | balayage automatique, formats YOLO et COCO, classes, limites                                                  |
+| [Détecteur entraîné](docs/detecteur-entraine.md) | entraînement, export ONNX, exécution dans le navigateur, résultats, autre modèle                              |
+| [Pilotage gestuel](docs/pilotage-gestuel.md)     | gestes, choix des deux mains, réglage de la réactivité                                                        |
+| [Performance](docs/performance.md)               | profils de qualité, mesures, pièges de Cesium                                                                 |
 
 ## Limites connues
 

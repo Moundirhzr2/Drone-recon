@@ -127,6 +127,26 @@
 
         <div class="dis-tally" id="dis-tally"></div>
         <div class="dis-note" id="dis-note">Choisir un alea, puis Lancer.</div>
+
+        <!-- Dégâts posés à la main : voir src/hud/editor.ts -->
+        <div class="dis-section">
+          <div class="dis-section-head">
+            <span>DÉGÂTS À LA MAIN</span>
+            <button id="dis-edit-toggle" class="dis-btn" type="button">Sélectionner (E)</button>
+          </div>
+          <p class="dis-edit-sel" id="dis-edit-sel"></p>
+          <div class="dis-edit-states" id="dis-edit-states"></div>
+        </div>
+
+        <!-- Scénario en JSON : voir src/disaster/scenarioFile.ts -->
+        <div class="dis-section">
+          <div class="dis-section-head"><span>SCÉNARIO</span></div>
+          <div class="dis-file">
+            <input id="dis-file-name" type="text" maxlength="80" placeholder="Nom du scénario" />
+            <button id="dis-save" class="dis-btn" type="button">Enregistrer</button>
+            <button id="dis-load" class="dis-btn" type="button">Charger</button>
+          </div>
+        </div>
       </div>
     </section>
 
