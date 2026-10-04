@@ -44,6 +44,7 @@
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.21",
+    "@techstark/opencv-js": "^5.0.0-release.1",
     "cesium": "^1.132.0",
     "earcut": "^3.2.3",
     "onnxruntime-web": "^1.30.0"

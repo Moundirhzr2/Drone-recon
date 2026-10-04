@@ -328,11 +328,15 @@ body {
   inset: 0;
   width: 240px;
   height: 180px;
-  transform: scaleX(-1); /* miroir : le pilote se voit comme dans une glace */
   object-fit: cover;
 }
+/* La vidéo s'affiche en miroir : le pilote se voit comme dans une glace. Le
+   calque de dessin, lui, n'est pas retourné : OpenCV y dessine déjà en miroir,
+   et son texte reste lisible. Il est deux fois plus défini que son affichage,
+   pour un texte net. */
 #webcam {
   opacity: 0.55;
+  transform: scaleX(-1);
 }
 
 .sticks {

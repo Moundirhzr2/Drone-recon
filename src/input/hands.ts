@@ -1,5 +1,14 @@
 /**
- * Pilotage gestuel — MediaPipe Hands, deux mains, disposition Mode 2.
+ * Pilotage gestuel — OpenCV et MediaPipe, deux mains, disposition Mode 2.
+ *
+ * LA CHAÎNE D'UNE IMAGE
+ * ---------------------
+ *   webcam -> OpenCV (correction d'éclairage, mesure de la lumière)
+ *          -> MediaPipe (21 points par main) -> gestes -> commandes du drone
+ *          -> OpenCV (retour vidéo : main, zone neutre, commande reconnue)
+ *
+ * Le traitement de l'image est dans `webcam.ts` ; ce module-ci transforme les
+ * points de la main en commandes.
  *
  * POURQUOI DEUX MAINS
  * -------------------
@@ -37,34 +46,10 @@ import { CONFIG, MEDIAPIPE } from '../core/config';
 import { emit, say } from '../core/bus';
 import { clamp, OneEuroFilter } from '../core/math';
 import type { ControlSource, ControlVector } from './control';
+import { WebcamVision, type HandSketch } from './webcam';
 
 type Point = { x: number; y: number; z: number };
 type Side = 'gauche' | 'droite';
-
-/** Squelette de la main, pour le retour visuel. */
-const BONES: Array<[number, number]> = [
-  [0, 1],
-  [1, 2],
-  [2, 3],
-  [3, 4], // pouce
-  [0, 5],
-  [5, 6],
-  [6, 7],
-  [7, 8], // index
-  [5, 9],
-  [9, 10],
-  [10, 11],
-  [11, 12], // majeur
-  [9, 13],
-  [13, 14],
-  [14, 15],
-  [15, 16], // annulaire
-  [13, 17],
-  [17, 18],
-  [18, 19],
-  [19, 20], // auriculaire
-  [0, 17],
-];
 
 const PALM = [0, 5, 9, 13, 17];
 const TIPS = [8, 12, 16, 20];
@@ -94,6 +79,13 @@ export class HandControl implements ControlSource {
   private ctx: CanvasRenderingContext2D | null;
   private landmarker: HandLandmarker | null = null;
   private stream: MediaStream | null = null;
+  /** Traitement OpenCV de l'image ; `null` s'il n'a pas pu se charger. */
+  private vision: WebcamVision | null = null;
+  /** Images de la webcam vues, pour cadencer la mesure de l'éclairage. */
+  private frames = 0;
+  private wasCorrecting = false;
+  /** Image corrigée par OpenCV, en attente de MediaPipe à l'image suivante. */
+  private pending: { image: ImageData; ts: number } | null = null;
 
   private running = false;
   private lastVideoTime = -1;
@@ -151,6 +143,17 @@ export class HandControl implements ControlSource {
     this.video.srcObject = this.stream;
     await this.video.play().catch(() => undefined);
 
+    if (!this.vision) {
+      try {
+        say('Chargement d’OpenCV…');
+        this.vision = await WebcamVision.create();
+      } catch (err) {
+        // Sans OpenCV, le pilotage reste possible, sans mesure ni dessin.
+        console.error('[mains] OpenCV indisponible', err);
+        say('OpenCV indisponible — image de la webcam non traitée', 'err');
+      }
+    }
+
     if (!this.landmarker) {
       try {
         say('Chargement du modèle de détection…');
@@ -178,6 +181,7 @@ export class HandControl implements ControlSource {
 
   stop(): void {
     this.running = false;
+    this.pending = null;
     this.vector = null;
     this.current = { gauche: null, droite: null };
     this.stream?.getTracks().forEach((t) => t.stop());
@@ -215,24 +219,50 @@ export class HandControl implements ControlSource {
   // ------------------------------------------------------------------
   // Boucle de détection
   // ------------------------------------------------------------------
+  /**
+   * En lumière normale, MediaPipe lit la vidéo telle quelle, en pleine
+   * définition. Quand OpenCV juge la pièce sombre, il corrige d'abord l'image,
+   * et MediaPipe la lit à l'image d'affichage suivante : correction et
+   * détection dépasseraient ensemble les 16 ms d'une image à 60 i/s. La webcam
+   * ne filme qu'à 30 i/s : ce délai ne fait perdre aucune de ses images.
+   */
   private loop = (): void => {
     if (!this.running || !this.landmarker) return;
 
-    if (this.video.readyState >= 2 && this.video.currentTime !== this.lastVideoTime) {
-      this.lastVideoTime = this.video.currentTime;
-      // MediaPipe exige un horodatage strictement croissant.
-      const ts = Math.max(performance.now(), this.lastTimestamp + 1);
-      this.lastTimestamp = ts;
-      try {
-        const result = this.landmarker.detectForVideo(this.video, ts);
-        this.consume(result, ts);
-      } catch (err) {
-        console.warn('[mains] détection échouée', err);
+    try {
+      if (this.pending) {
+        const { image, ts } = this.pending;
+        this.pending = null;
+        this.consume(this.landmarker.detectForVideo(image, ts), ts);
+      } else if (this.video.readyState >= 2 && this.video.currentTime !== this.lastVideoTime) {
+        this.lastVideoTime = this.video.currentTime;
+        // MediaPipe exige un horodatage strictement croissant.
+        const ts = Math.max(performance.now(), this.lastTimestamp + 1);
+        this.lastTimestamp = ts;
+        if (this.vision && this.frames++ % CONFIG.hands.vision.measureEvery === 0) {
+          this.vision.measure(this.video);
+          this.announceLighting();
+        }
+        if (this.vision?.correcting) this.pending = { image: this.vision.correct(this.video), ts };
+        else this.consume(this.landmarker.detectForVideo(this.video, ts), ts);
       }
+    } catch (err) {
+      this.pending = null;
+      console.warn('[mains] détection échouée', err);
     }
 
     requestAnimationFrame(this.loop);
   };
+
+  /** Prévient le pilote quand la correction d'éclairage s'enclenche ou s'arrête. */
+  private announceLighting(): void {
+    const correcting = !!this.vision?.correcting;
+    if (correcting === this.wasCorrecting) return;
+    this.wasCorrecting = correcting;
+    if (correcting)
+      say('Pièce sombre : image corrigée par OpenCV — éclairez si la main se perd', 'err');
+    else say('Éclairage suffisant : correction coupée', 'ok');
+  }
 
   private consume(result: HandLandmarkerResult, ts: number): void {
     const found: Record<Side, HandFrame | null> = { gauche: null, droite: null };
@@ -385,67 +415,68 @@ export class HandControl implements ControlSource {
   // ------------------------------------------------------------------
   // Retour visuel
   // ------------------------------------------------------------------
+  /**
+   * Le retour vidéo est dessiné par OpenCV (`webcam.ts`), sur un calque posé
+   * sur la vidéo. Sans OpenCV, la vidéo s'affiche seule, sans dessin.
+   */
   private draw(): void {
-    const ctx = this.ctx;
-    if (!ctx) return;
-    const { width: w, height: h } = this.canvas;
-    ctx.clearRect(0, 0, w, h);
-
-    if (this.calibrating) {
-      const left = Math.max(0, (this.calibUntil - performance.now()) / 1000);
-      ctx.fillStyle = 'rgba(0, 229, 255, 0.85)';
-      ctx.font = '600 22px ui-monospace, monospace';
-      ctx.textAlign = 'center';
-      // Le canvas est retourné par CSS : on compense pour garder le texte lisible.
-      ctx.save();
-      ctx.translate(w, 0);
-      ctx.scale(-1, 1);
-      ctx.fillText(left.toFixed(1), w / 2, h / 2 + 8);
-      ctx.restore();
-    }
-
+    if (!this.vision) return;
+    const hands: HandSketch[] = [];
     for (const side of ['gauche', 'droite'] as Side[]) {
       const hand = this.current[side];
       if (!hand) continue;
-
-      const tint = side === 'gauche' ? '#ffc400' : '#00e5ff';
-      const px = (p: Point) => p.x * w;
-      const py = (p: Point) => p.y * h;
-
-      ctx.strokeStyle = hand.pinching ? '#00e676' : tint;
-      ctx.lineWidth = hand.pinching ? 2.5 : 1.5;
-      ctx.beginPath();
-      for (const [a, b] of BONES) {
-        ctx.moveTo(px(hand.points[a]), py(hand.points[a]));
-        ctx.lineTo(px(hand.points[b]), py(hand.points[b]));
-      }
-      ctx.stroke();
-
-      // Centre de paume et origine calibrée : on voit d'un coup d'oeil
-      // l'amplitude de commande envoyée.
-      ctx.fillStyle = tint;
-      ctx.beginPath();
-      ctx.arc(hand.cx * w, hand.cy * h, 4, 0, Math.PI * 2);
-      ctx.fill();
-
-      const o = this.origin[side];
-      ctx.strokeStyle = 'rgba(255,255,255,.35)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(o.x * w, o.y * h, CONFIG.hands.deadzone * CONFIG.hands.gain * w * 2, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(o.x * w, o.y * h);
-      ctx.lineTo(hand.cx * w, hand.cy * h);
-      ctx.stroke();
-
-      if (hand.fist) {
-        ctx.fillStyle = 'rgba(255,23,68,.9)';
-        ctx.beginPath();
-        ctx.arc(hand.cx * w, hand.cy * h, 9, 0, Math.PI * 2);
-        ctx.stroke();
-      }
+      hands.push({
+        points: hand.points,
+        cx: hand.cx,
+        cy: hand.cy,
+        origin: this.origin[side],
+        color: side === 'gauche' ? [255, 196, 0] : [0, 229, 255],
+        pinching: hand.pinching,
+        fist: hand.fist,
+      });
     }
+    this.vision.overlay(this.canvas, {
+      hands,
+      lines: this.commandLines(),
+      countdown: this.calibrating
+        ? Math.max(0, (this.calibUntil - performance.now()) / 1000)
+        : null,
+    });
+  }
+
+  /**
+   * La commande reconnue, une ligne par main, en capitales sans accent : le
+   * texte d'OpenCV ne connaît que l'ASCII.
+   */
+  private commandLines(): string[] {
+    if (this.calibrating) return ['CALIBRAGE : MAINS AU CENTRE'];
+    if (this.holdActive) return ['STABILISE : POINGS FERMES'];
+    const v = this.vector;
+    const word = (value: number, plus: string, minus: string) =>
+      value > 0 ? plus : value < 0 ? minus : '';
+    const describe = (words: string[]) => words.filter(Boolean).join(' + ') || 'NEUTRE';
+    const lines: string[] = [];
+    const left = this.current.gauche;
+    const right = this.current.droite;
+    if (left) {
+      const action = left.pinching
+        ? 'DIAGNOSTIC'
+        : describe([
+            word(v?.throttle ?? 0, 'MONTE', 'DESCEND'),
+            word(v?.yaw ?? 0, 'TOURNE D', 'TOURNE G'),
+          ]);
+      lines.push(`G  ${action}`);
+    }
+    if (right) {
+      const action = right.pinching
+        ? 'PHOTO'
+        : describe([
+            word(v?.pitch ?? 0, 'AVANCE', 'RECULE'),
+            word(v?.roll ?? 0, 'DROITE', 'GAUCHE'),
+          ]);
+      lines.push(`D  ${action}`);
+    }
+    return lines.length ? lines : ['AUCUNE MAIN : STATIONNAIRE'];
   }
 
   /** Résumé pour le HUD. */

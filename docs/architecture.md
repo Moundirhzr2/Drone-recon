@@ -10,7 +10,7 @@ src/
 │                 bâti par carreaux, textures, courbe de fragilité, profils de
 │                 qualité
 ├── drone/        physique de vol, châssis 3D, caméras, vue nadir, photos
-├── input/        abstraction des commandes, clavier, suivi des mains MediaPipe
+├── input/        abstraction des commandes, clavier, webcam (OpenCV), suivi des mains (MediaPipe)
 ├── diagnostic/   détecteur de dommages, surcouches, métriques
 ├── disaster/     scénarios, champs d'intensité, chronologie et lecture
 ├── effects/      effets visuels des désastres : eau, feu, fumée, explosion

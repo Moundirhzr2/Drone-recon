@@ -10,6 +10,7 @@
   <a href="LICENSE"><img alt="Licence MIT" src="https://img.shields.io/badge/licence-MIT-blue.svg" /></a>
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript&logoColor=white" />
   <img alt="CesiumJS" src="https://img.shields.io/badge/CesiumJS-1.132-6caddf" />
+  <img alt="OpenCV" src="https://img.shields.io/badge/OpenCV.js-5.0-5c3ee8" />
   <img alt="MediaPipe" src="https://img.shields.io/badge/MediaPipe-Hands-0097a7" />
 </p>
 
@@ -63,7 +64,9 @@ travaux peut s'y substituer sans toucher au reste.
 - **Drone d'inspection** à la taille réelle — bras en carbone, hélices vrillées
   qui tournent, nacelle de caméra, patins, feux de navigation —, généré par le
   code en glTF.
-- **Pilotage gestuel** — suivi des deux mains par MediaPipe, disposition Mode 2
+- **Pilotage gestuel** — image de la webcam traitée par OpenCV (mesure et
+  correction de l'éclairage, retour vidéo avec la commande reconnue), mains
+  repérées par MediaPipe, disposition Mode 2
   des radiocommandes, gestes pour la photo et la bascule de vue.
 - **Instrumentation** — coordonnées GPS en haut à gauche, caméra verticale en
   haut à droite, photos horodatées, vues embarquée et de suivi.
@@ -283,8 +286,10 @@ Voir [CONTRIBUTING.md](CONTRIBUTING.md) pour les conventions du projet.
 
 [CesiumJS](https://cesium.com/platform/cesiumjs/) pour le globe, le rendu 3D et
 les particules,
+[OpenCV](https://opencv.org) (opencv.js) pour le traitement de l'image de la
+webcam,
 [MediaPipe Hand Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker)
-pour le suivi des mains, [earcut](https://github.com/mapbox/earcut) pour les
+pour le repérage des mains, [earcut](https://github.com/mapbox/earcut) pour les
 toitures, [TypeScript](https://www.typescriptlang.org) et [Vite](https://vite.dev).
 Le détecteur est entraîné avec [PyTorch](https://pytorch.org) et
 [Ultralytics YOLO](https://docs.ultralytics.com), puis exécuté dans le navigateur

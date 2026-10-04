@@ -229,6 +229,31 @@ export const CONFIG = {
     debounce: 600,
     /** Inverse l'attribution gauche/droite si le mapping semble à l'envers. */
     swapHands: false,
+    /** Traitement de l'image de la webcam par OpenCV : voir `input/webcam.ts`. */
+    vision: {
+      /**
+       * Images de la webcam entre deux mesures de l'éclairage : 10, soit trois
+       * mesures par seconde. L'éclairage d'une pièce change lentement.
+       */
+      measureEvery: 10,
+      /**
+       * Largeur de l'image corrigée quand la pièce est sombre, en pixels ; la
+       * hauteur suit le format de la webcam. En 480, la correction coûte deux
+       * fois moins qu'en 640, et MediaPipe garde des repères précis.
+       */
+      width: 480,
+      /**
+       * Limite de contraste de l'égalisation (CLAHE). Plus haut, la main
+       * ressort mieux dans la pénombre, mais le bruit de la caméra aussi.
+       */
+      claheClip: 2,
+      /** Nombre de tuiles par côté : l'égalisation s'adapte à chaque tuile. */
+      claheGrid: 8,
+      /** Luminance moyenne, sur 255, en dessous de laquelle l'image est corrigée. */
+      darkThreshold: 55,
+      /** Marge au-dessus du seuil avant de couper la correction : sans elle, elle clignoterait. */
+      brightMargin: 15,
+    },
     /**
      * Lissage One Euro du centre de paume.
      *

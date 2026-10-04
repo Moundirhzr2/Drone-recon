@@ -1,10 +1,45 @@
 # Pilotage gestuel
 
-Le drone se pilote aux deux mains devant une webcam, grâce au suivi de mains
-MediaPipe exécuté localement dans le navigateur. Aucune image ne quitte la
-machine.
+Le drone se pilote aux deux mains devant une webcam. OpenCV traite l'image de
+la webcam, MediaPipe y repère les mains ; les deux tournent localement dans le
+navigateur, et aucune image ne quitte la machine.
 
 La touche `H` active ou coupe le pilotage gestuel ; `K` relance le calibrage.
+
+## Le traitement de l'image, par OpenCV
+
+[OpenCV](https://opencv.org) (opencv.js, `src/input/webcam.ts`) s'occupe de
+l'image de la webcam ; MediaPipe y repère les mains.
+
+1. **Mesure de l'éclairage.** Trois fois par seconde, OpenCV calcule la
+   luminance moyenne de l'image, sur une vignette : l'éclairage d'une pièce
+   change lentement.
+2. **Correction d'éclairage, quand la pièce est sombre.** Sous un seuil, OpenCV
+   égalise le contraste de l'image (CLAHE) avant de la donner à MediaPipe, sur
+   la luminance seule, dans l'espace YCrCb, pour ne pas fausser les couleurs de
+   peau : dans la pénombre, la main redevient lisible. Le panneau l'annonce, et
+   la vidéo porte la mention « LUMIERE CORRIGEE ». En pleine lumière, la
+   correction n'apporterait rien et ajouterait du bruit : MediaPipe lit alors
+   la vidéo telle quelle, en pleine définition.
+3. **Retour vidéo.** Par-dessus la vidéo du panneau « Pilotage », OpenCV dessine
+   le squelette de chaque main, la zone neutre et la commande reconnue, main
+   par main : `G  MONTE + TOURNE D`, `D  AVANCE`, `STABILISE`, `PHOTO`…
+
+Une première version corrigeait toutes les images, réduites en 320 × 240 :
+MediaPipe y perdait en précision, et le pilotage était moins stable. La
+correction ne sert donc que là où elle aide.
+
+| Mesure, GTX 1650 de portable, webcam simulée                       | Valeur                   |
+| ------------------------------------------------------------------ | ------------------------ |
+| Mesure de l'éclairage, trois fois par seconde                      | 5 à 6 ms                 |
+| Correction d'une image, pièce sombre seulement                     | 11 ms en 480 px de large |
+| Cadence de la 3D : sans les mains / lumière normale / pièce sombre | 60 / 58 / 56 i/s         |
+
+En pièce sombre, OpenCV et MediaPipe travaillent sur deux images d'affichage
+successives : ensemble, ils dépasseraient les 16 ms d'une image à 60 i/s.
+
+OpenCV pèse 13 Mo : il n'est chargé qu'au premier appui sur `H`. S'il ne peut
+pas se charger, le pilotage continue sans mesure ni dessin.
 
 ## Disposition des commandes
 
@@ -96,19 +131,22 @@ mais laisse passer le tremblement.
 
 Dans `src/core/config.ts`, section `hands` :
 
-| Clé                   | Défaut  | Effet                                            |
-| --------------------- | ------- | ------------------------------------------------ |
-| `smoothing.beta`      | 0,70    | réactivité aux gestes rapides                    |
-| `smoothing.minCutoff` | 1,6     | lissage au repos                                 |
-| `deadzone`            | 0,12    | zone morte centrale, en fraction du cadre        |
-| `gain`                | 0,30    | amplitude utile autour du centre                 |
-| `calibrationTime`     | 3 s     | durée du calibrage initial                       |
-| `swapHands`           | `false` | à activer si gauche et droite semblent inversées |
+| Clé                    | Défaut  | Effet                                            |
+| ---------------------- | ------- | ------------------------------------------------ |
+| `smoothing.beta`       | 0,70    | réactivité aux gestes rapides                    |
+| `smoothing.minCutoff`  | 1,6     | lissage au repos                                 |
+| `deadzone`             | 0,12    | zone morte centrale, en fraction du cadre        |
+| `gain`                 | 0,30    | amplitude utile autour du centre                 |
+| `calibrationTime`      | 3 s     | durée du calibrage initial                       |
+| `swapHands`            | `false` | à activer si gauche et droite semblent inversées |
+| `vision.width`         | 320     | largeur de l'image traitée par OpenCV, en pixels |
+| `vision.claheClip`     | 2       | force de la correction d'éclairage               |
+| `vision.darkThreshold` | 55      | luminance moyenne, sur 255, jugée trop sombre    |
 
 ## Conditions d'usage
 
-Le suivi dépend de l'éclairage et de la webcam. Il fonctionne mieux avec une
-lumière de face, un fond peu chargé, et les deux mains entièrement dans le cadre
+Le suivi dépend de l'éclairage et de la webcam, même avec la correction
+d'OpenCV. Il fonctionne mieux avec une lumière de face, un fond peu chargé, et les deux mains entièrement dans le cadre
 — une main coupée par le bord de l'image perd ses repères et ses axes. Le
 panneau « Pilotage », en bas à gauche, montre le retour caméra et la position des
 deux manches virtuels : c'est le premier endroit où regarder si le drone réagit
