@@ -36,8 +36,10 @@ def main() -> None:
         sys.exit(f"Aucune image dans {source / 'images'}")
 
     cells = sorted({p.stem.rsplit("_", 1)[1] for p in images})
+    # Tirage à graine fixe, pour que la séparation soit reproductible : il ne
+    # protège rien, un générateur cryptographique n'aurait pas de sens ici.
     rng = random.Random(SEED)
-    val_cells = set(rng.sample(cells, round(len(cells) * VALIDATION)))
+    val_cells = set(rng.sample(cells, round(len(cells) * VALIDATION)))  # NOSONAR
 
     if target.exists():
         shutil.rmtree(target)
