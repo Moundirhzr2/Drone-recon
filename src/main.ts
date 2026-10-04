@@ -110,7 +110,7 @@ async function main(): Promise<void> {
     : () => city.ground;
   const drone = new Drone(groundAt);
   // Le châssis 3D est optionnel : voir CONFIG.drone.showModel.
-  const model = CONFIG.drone.showModel ? new DroneModel(viewer, drone.state) : null;
+  const model = CONFIG.drone.showModel ? DroneModel.create(viewer, drone.state) : null;
   const camera = new DroneCamera(scene.camera, drone.state);
   const nadir = new NadirView(scene, drone.state);
   const photos = new PhotoLog(nadir, drone.state);

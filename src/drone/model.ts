@@ -62,7 +62,7 @@ export class DroneModel {
   private spinMatrix = new Cesium.Matrix4();
   private nodeMatrix = new Cesium.Matrix4();
 
-  constructor(
+  private constructor(
     private viewer: Cesium.Viewer,
     private state: DroneState,
   ) {
@@ -85,8 +85,17 @@ export class DroneModel {
       modelMatrix: this.groundFrame,
     });
     viewer.scene.primitives.add(this.ring);
+  }
 
-    void this.load();
+  /**
+   * Crée le drone et lance le chargement de son modèle glTF. Le chargement est
+   * asynchrone : il ne se fait pas dans le constructeur, qui ne pourrait pas
+   * en signaler l'échec ni être attendu.
+   */
+  static create(viewer: Cesium.Viewer, state: DroneState): DroneModel {
+    const drone = new DroneModel(viewer, state);
+    void drone.load();
+    return drone;
   }
 
   private async load(): Promise<void> {

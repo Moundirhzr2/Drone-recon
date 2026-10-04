@@ -315,7 +315,7 @@ function merge(...parts) {
 
 /** Couleur sRGB « #rrggbb » vers les composantes linéaires qu'attend glTF. */
 function linear(hex, alpha = 1) {
-  const c = [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16) / 255);
+  const c = [1, 3, 5].map((k) => Number.parseInt(hex.slice(k, k + 2), 16) / 255);
   return [...c.map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)), alpha];
 }
 

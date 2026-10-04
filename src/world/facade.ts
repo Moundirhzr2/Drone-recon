@@ -1083,7 +1083,9 @@ function valueNoise(x: number, y: number, seed: number): number {
   const sv = v * v * (3 - 2 * v);
   const salt = Math.floor(seed * 1e6);
   const at = (i: number, j: number) => {
-    let n = (i * 374761393 + j * 668265263 + salt * 1442695041) | 0;
+    // Le repli sur 32 bits se fait dans les opérations bit à bit qui suivent :
+    // la somme est un entier exact, bien en deçà de 2^53.
+    let n = Math.trunc(i * 374761393 + j * 668265263 + salt * 1442695041);
     n = Math.imul(n ^ (n >>> 13), 1274126177);
     return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
   };
