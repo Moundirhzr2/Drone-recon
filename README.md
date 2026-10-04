@@ -73,7 +73,9 @@ travaux peut s'y substituer sans toucher au reste.
   fragilité commune, une chronologie rejouable et parcourable dans les deux sens.
 - **Export d'un jeu de données** — touche `J` : le drone balaie seul la zone
   pour chaque aléa et enregistre un millier d'images verticales annotées, aux
-  formats YOLO et COCO, prêtes pour entraîner un détecteur.
+  formats YOLO et COCO, prêtes pour entraîner un détecteur. `Maj+J` lance une
+  campagne variée : seize scénarios, images centrées sur les dégâts, hauteur et
+  cap tirés au hasard.
 - **Détecteur entraîné** — touche `O` : un modèle YOLO entraîné sur ce jeu de
   données prend la place du détecteur simulé et analyse l'image nadir dans le
   navigateur, sur la carte graphique ; ses alertes sont confrontées en direct à
@@ -141,6 +143,7 @@ mains ouvertes et immobiles pendant les trois secondes de calibrage.
 | `B` / `N`        | sauter avant / après le sinistre                          |
 | `Retour arrière` | annuler le sinistre                                       |
 | `J`              | exporter un jeu de données annoté (Chrome ou Edge)        |
+| `Maj` + `J`      | exporter la campagne variée                               |
 | `O`              | passer au détecteur entraîné, ou revenir au simulé        |
 
 Aux mains : la main gauche règle l'altitude et la rotation, la main droite le
@@ -230,8 +233,8 @@ l'eau.
 ## Limites connues
 
 - **Le détecteur entraîné n'a vu que des images de synthèse.** Il a appris sur
-  la ville dessinée, à 60 m, nord en haut de l'image : il reste à le valider sur
-  de vraies images de drone. Il ne distingue pas un bâtiment fissuré, que ce
+  la ville dessinée, entre 40 et 90 m de hauteur : il reste à le valider sur de
+  vraies images de drone. Il ne distingue pas un bâtiment fissuré, que ce
   rendu dessine comme un intact. Le détecteur par défaut, lui, est simulé : il
   n'analyse pas l'image, il bruite la vérité terrain.
 - **Dans la ville dessinée, les toits sont plats.** Chaque bâtiment est une

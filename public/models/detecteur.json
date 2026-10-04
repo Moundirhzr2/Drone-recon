@@ -1,5 +1,5 @@
 {
-  "name": "YOLO11n — Drone Recon",
+  "name": "YOLO11n — Drone Recon v2",
   "format": "yolo",
   "inputSize": 640,
   "classes": [
@@ -8,13 +8,16 @@
     "collapsed",
     "burnt"
   ],
-  "trainedAltitude": 60,
-  "epoch": 48,
+  "trainedAltitudes": [
+    40,
+    90
+  ],
+  "epoch": 60,
   "validation": {
-    "mAP50": 0.711,
-    "mAP50-95": 0.497,
-    "precision": 0.808,
-    "recall": 0.655
+    "mAP50": 0.867,
+    "mAP50-95": 0.663,
+    "precision": 0.868,
+    "recall": 0.798
   },
-  "exportedAt": "2026-10-04T07:12:43"
+  "exportedAt": "2026-10-04T11:55:34"
 }

@@ -30,8 +30,8 @@ export interface ModelCard {
   inputSize: number;
   /** Une classe par sortie, nommée comme un état de dommage du simulateur. */
   classes: string[];
-  /** Hauteur de vol des images d'entraînement, en mètres. */
-  trainedAltitude: number;
+  /** Hauteurs de vol extrêmes des images d'entraînement, en mètres. */
+  trainedAltitudes: [number, number];
   epoch: number;
   validation: { mAP50: number; 'mAP50-95': number; precision: number; recall: number };
   exportedAt: string;
@@ -43,6 +43,9 @@ export interface ModelCard {
  * a fusionné les deux classes (voir `ml/preparer.py`).
  */
 const VISIBLE_DAMAGE: ReadonlySet<DamageState> = new Set(['partial', 'collapsed', 'burnt']);
+
+/** Écart toléré, en mètres, avant de signaler un vol hors des hauteurs d'entraînement. */
+const ALTITUDE_MARGIN = 15;
 
 /** Recouvrement à partir duquel une boîte trop imprécise est dite viser un bâtiment. */
 const LOOSE_IOU = 0.1;
@@ -311,9 +314,12 @@ export function describe(detector: TrainedDetector, agl: number): string {
     `${where}, ${fr(detector.ms, 0)} ms par image.`,
     '« Fissuré » compte comme intact : ce rendu ne le montre pas.',
   ];
-  if (Math.abs(agl - card.trainedAltitude) > 20) {
+  // Une marge, car un détecteur tolère un peu d'écart de taille apparente.
+  const [lowest, highest] = card.trainedAltitudes;
+  if (agl < lowest - ALTITUDE_MARGIN || agl > highest + ALTITUDE_MARGIN) {
+    const trained = lowest === highest ? `à ${lowest} m` : `entre ${lowest} et ${highest} m`;
     lines.push(
-      `Entraîné à ${card.trainedAltitude} m : à ${fr(agl, 0)} m, les bâtiments n'ont pas la taille qu'il connaît.`,
+      `Entraîné ${trained} : à ${fr(agl, 0)} m, les bâtiments n'ont pas la taille qu'il connaît.`,
     );
   }
   return lines.join(' ');
