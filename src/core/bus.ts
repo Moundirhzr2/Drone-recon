@@ -13,6 +13,8 @@ import type { Photo } from '../drone/photo';
 export type AppEvents = {
   /** Déclencher une prise de vue nadir. */
   'photo:take': void;
+  /** Capturer la paire avant / après du sinistre en cours, depuis le même point de vue. */
+  'photo:pair': void;
   /** Une photo vient d'être enregistrée. */
   'photo:taken': Photo;
   /** Basculer entre image brute et image diagnostique. */

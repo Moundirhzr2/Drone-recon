@@ -42,6 +42,15 @@ import { drawMainOverlay, drawNadirOverlay } from './diagnostic/overlay';
 import { runTour } from './demo/tour';
 import { DatasetCampaign } from './dataset/campaign';
 import { BuildingEditor } from './hud/editor';
+import {
+  annotateCapture,
+  CaptureSaver,
+  grabView,
+  sideBySide,
+  timestamp,
+  toPng,
+  type CaptureInfo,
+} from './drone/capture';
 import { downloadScenario, pickScenarioFile, scenarioFileName } from './disaster/scenarioFile';
 import {
   boot,
@@ -245,7 +254,36 @@ async function main(): Promise<void> {
   });
 
   // --- Actions ------------------------------------------------------------------
+  // --- Captures : voir `drone/capture.ts` -------------------------------------
+  const saver = new CaptureSaver();
+  /** Le bandeau d'une capture : où, quand, et la source des données à l'image. */
+  const captureInfo = (extra: Partial<CaptureInfo> = {}): CaptureInfo => ({
+    at: new Date(),
+    lon: drone.state.lon,
+    lat: drone.state.lat,
+    agl: drone.state.agl,
+    heading: drone.state.heading,
+    credits: photoreal?.shown
+      ? 'Relevé 3D : Google · Cesium ion'
+      : city.attribution?.includes('IGN')
+        ? 'Données : IGN — BD TOPO®, BD ORTHO®, RGE ALTI®'
+        : 'Données : © OpenStreetMap (ODbL) · imagerie Esri, Maxar · relief Mapzen',
+    ...extra,
+  });
+  const captureFailed = (err: unknown) =>
+    handsPanel.setMessage(
+      `Capture non enregistrée : ${err instanceof Error ? err.message : String(err)}`,
+      'err',
+    );
+
+  // Espace, ou pincement de la main droite : la vue du pilote, et la photo
+  // verticale de la caméra nadir, avec ses détections.
   on('photo:take', () => {
+    // Le choix du dossier doit s'ouvrir dans la foulée de la touche.
+    const folder = saver.ensureFolder();
+    const stamp = timestamp();
+    const view = grabView(viewer);
+    annotateCapture(view, captureInfo());
     // Avec le modèle, la photo reprend ses dernières détections : une analyse
     // prend du temps, et elle date d'une fraction de seconde au plus.
     const photo = photos.take((g) =>
@@ -255,11 +293,79 @@ async function main(): Promise<void> {
     );
     flashShutter();
     gallery.add(photo);
-    handsPanel.setMessage(
-      `${photo.id} — ${photo.detections.length} cible(s), ${photo.gsd.toFixed(1)} cm/px`,
-      'ok',
-    );
+    void (async () => {
+      await folder;
+      await saver.save(`capture_${stamp}_vue.png`, await toPng(view));
+      await saver.save(`capture_${stamp}_nadir.png`, await (await fetch(photo.dataUrl)).blob());
+      handsPanel.setMessage(
+        `Capture enregistrée dans ${saver.destination} : capture_${stamp}_vue.png et _nadir.png`,
+        'ok',
+      );
+    })().catch(captureFailed);
   });
+
+  // Maj + Espace : la paire avant / après, depuis le même point de vue.
+  let pairBusy = false;
+  /** Attend que la vue soit complète : ruines construites, tuiles chargées. */
+  const settle = async () => {
+    const start = performance.now();
+    let calm = 0;
+    while (calm < 3 && performance.now() - start < 8000) {
+      await new Promise((r) => requestAnimationFrame(r));
+      const ready =
+        renderer.idle &&
+        (!scene.globe.show || scene.globe.tilesLoaded) &&
+        (photoreal?.tilesLoaded ?? true);
+      calm = ready ? calm + 1 : 0;
+    }
+  };
+  const capturePair = async () => {
+    if (pairBusy) return;
+    if (!player.current) {
+      handsPanel.setMessage(
+        'Paire avant / après : lancer d’abord un sinistre, ou poser des dégâts (E)',
+        'err',
+      );
+      return;
+    }
+    pairBusy = true;
+    const folder = saver.ensureFolder();
+    const stamp = timestamp();
+    const time = player.time;
+    const playing = player.playing;
+    // Le drone ne bouge pas entre les deux images : c'est le même point de vue.
+    drone.state.holding = true;
+    const subtitle = disasterPanel.describe();
+    handsPanel.setMessage('Paire avant / après : prise de vue…');
+    try {
+      disasterPanel.jump('start');
+      await settle();
+      const before = grabView(viewer);
+      annotateCapture(before, captureInfo({ title: 'AVANT', subtitle }));
+      disasterPanel.jump('end');
+      await settle();
+      const after = grabView(viewer);
+      annotateCapture(after, captureInfo({ title: 'APRÈS', subtitle }));
+      flashShutter();
+      await folder;
+      await saver.save(`capture_${stamp}_avant.png`, await toPng(before));
+      await saver.save(`capture_${stamp}_apres.png`, await toPng(after));
+      await saver.save(`capture_${stamp}_avant-apres.png`, await toPng(sideBySide(before, after)));
+      handsPanel.setMessage(
+        `Paire avant / après enregistrée dans ${saver.destination} : capture_${stamp}_avant, _apres, _avant-apres`,
+        'ok',
+      );
+    } catch (err) {
+      captureFailed(err);
+    } finally {
+      disasterPanel.seek(time);
+      player.playing = playing;
+      pairBusy = false;
+      drone.state.holding = holdRequested;
+    }
+  };
+  on('photo:pair', () => void capturePair());
+  document.getElementById('dis-pair')?.addEventListener('click', () => void capturePair());
 
   // Fumée, flammes et eau brouilleraient la lecture des vues techniques, qui
   // ne montrent que la classification des dommages. Pour la même raison, ces
@@ -393,8 +499,12 @@ async function main(): Promise<void> {
     handsPanel.setMessage('Retour au point de décollage', 'ok');
   });
 
+  // Dernière stabilisation demandée (Maj, deux poings) : une paire avant /
+  // après fige aussi le drone, et doit lui rendre cette demande-là à la fin.
+  let holdRequested = false;
   on('drone:hold', (v) => {
-    drone.state.holding = v;
+    holdRequested = v;
+    drone.state.holding = v || pairBusy;
   });
 
   on('hands:toggle', () => void hands.toggle());
@@ -623,6 +733,7 @@ async function main(): Promise<void> {
       photoreal,
       dataset,
       editor,
+      saver,
       trained,
       step: (n?: number) => step(n ?? performance.now()),
       get diagnostic() {

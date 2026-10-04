@@ -621,6 +621,10 @@ body {
 .dis-file .dis-btn {
   padding: 4px 8px;
 }
+.dis-pair {
+  width: 100%;
+  margin-top: 4px;
+}
 
 .dis-note {
   font-size: 9.5px;

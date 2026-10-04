@@ -59,9 +59,10 @@ export class KeyboardControl implements ControlSource {
   /** Commandes ponctuelles : tout ce qui n'est pas un axe. */
   private handleAction(e: KeyboardEvent): void {
     switch (e.code) {
+      // Maj + Espace : la paire avant / après, voir `drone/capture.ts`.
       case 'Space':
         e.preventDefault();
-        emit('photo:take');
+        emit(e.shiftKey ? 'photo:pair' : 'photo:take');
         break;
       case 'KeyV':
         emit('view:toggle-diagnostic');

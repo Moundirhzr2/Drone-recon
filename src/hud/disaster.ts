@@ -370,6 +370,26 @@ export class DisasterPanel {
     if (index >= 0 && index < KINDS.length) this.selectKind(KINDS[index]);
   }
 
+  /** Place la lecture à un instant donné, sans la lancer. */
+  seek(t: number): void {
+    if (this.player.seek(t)) this.hooks.onRebuild();
+    this.refresh();
+  }
+
+  /** Le sinistre en cours, en une ligne : le sous-titre d'une capture avant / après. */
+  describe(): string {
+    const parts: string[] = [];
+    if (this.kind) {
+      const meta = DISASTERS[this.kind];
+      parts.push(
+        `${meta.label} · ${meta.unit} : ${this.scenario.magnitude.toLocaleString('fr-FR')}`,
+      );
+    }
+    const n = this.edits.size;
+    if (n) parts.push(`${n} dégât${n > 1 ? 's' : ''} posé${n > 1 ? 's' : ''} à la main`);
+    return parts.join(' + ') || 'Sinistre';
+  }
+
   /** Déplie le panneau s'il est replié. */
   open(): void {
     this.panel.classList.remove('collapsed');

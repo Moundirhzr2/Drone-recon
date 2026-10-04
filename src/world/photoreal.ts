@@ -497,6 +497,11 @@ export class PhotorealCity {
     if (this.floors) this.floors.show = this.visible;
   }
 
+  /** Le relevé est-il affiché ? Les captures doivent alors le citer. */
+  get shown(): boolean {
+    return this.visible;
+  }
+
   /** Le décor en vue réaliste ; la ville dessinée, entière, dans les vues techniques. */
   setVisible(on: boolean): void {
     this.visible = on;

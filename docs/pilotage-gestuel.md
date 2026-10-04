@@ -52,7 +52,7 @@ Disposition **Mode 2**, celle des radiocommandes de drone :
 
 | Geste                              | Effet                                     |
 | ---------------------------------- | ----------------------------------------- |
-| Pincement pouce-index, main droite | prendre une photo nadir                   |
+| Pincement pouce-index, main droite | capture : vue du drone et photo nadir     |
 | Pincement pouce-index, main gauche | basculer la vue diagnostique              |
 | Deux poings fermés                 | stabilisation : le drone fige sa position |
 | Une main hors champ                | ses deux axes retombent à zéro            |

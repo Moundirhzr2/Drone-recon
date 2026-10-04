@@ -69,7 +69,7 @@ travaux peut s'y substituer sans toucher au reste.
   repérées par MediaPipe, disposition Mode 2
   des radiocommandes, gestes pour la photo et la bascule de vue.
 - **Instrumentation** — coordonnées GPS en haut à gauche, caméra verticale en
-  haut à droite, photos horodatées, vues embarquée et de suivi.
+  haut à droite, captures en PNG datées, vues embarquée et de suivi.
 - **Diagnostic** — classification des dommages avec boîtes, scores et rapport ;
   précision et rappel calculés en direct contre la vérité terrain.
 - **Simulateur de désastres** — quatre aléas physiquement fondés, une courbe de
@@ -135,7 +135,8 @@ mains ouvertes et immobiles pendant les trois secondes de calibrage.
 | `Z` `Q` `S` `D`  | avancer, reculer, translater (`W` `A` `S` `D` en QWERTY)  |
 | `↑` `↓`          | monter, descendre                                         |
 | `←` `→`          | pivoter                                                   |
-| `Espace`         | prendre une photo nadir                                   |
+| `Espace`         | capture : vue du drone et photo nadir, en PNG datés       |
+| `Maj` + `Espace` | capturer la paire avant / après du sinistre en cours      |
 | `V`              | basculer entre vue brute et vue diagnostique              |
 | `M`              | changer de rendu : réaliste, fil de fer, scan             |
 | `C`              | vue embarquée ou caméra de suivi                          |
@@ -154,9 +155,34 @@ mains ouvertes et immobiles pendant les trois secondes de calibrage.
 | `O`              | passer au détecteur entraîné, ou revenir au simulé        |
 
 Aux mains : la main gauche règle l'altitude et la rotation, la main droite le
-déplacement ; un pincement droit prend une photo, un pincement gauche bascule le
-diagnostic, deux poings fermés stabilisent le drone. Le détail est dans
+déplacement ; un pincement droit prend une capture, un pincement gauche bascule
+le diagnostic, deux poings fermés stabilisent le drone. Le détail est dans
 [pilotage gestuel](docs/pilotage-gestuel.md).
+
+## Captures
+
+`Espace`, ou un pincement de la main droite, enregistre deux images PNG :
+
+- `capture_2026-10-04_18-37-12_vue.png` : la vue du pilote, telle qu'à l'écran,
+  sans l'interface ;
+- `capture_2026-10-04_18-37-12_nadir.png` : la photo verticale de la caméra
+  nadir, qui rejoint aussi la galerie avec ses détections.
+
+`Maj` + `Espace`, ou le bouton « Capturer avant / après » du simulateur, prend
+la paire avant / après du sinistre en cours, depuis le même point de vue : le
+drone se fige, la scène revient avant le sinistre, puis passe à son état final.
+Trois fichiers : `_avant.png`, `_apres.png`, et `_avant-apres.png` où les deux
+sont côte à côte.
+
+Chaque image porte un bandeau : date et heure, position, hauteur au-dessus du
+sol, cap, et la source des données affichées. Un éclair et un message
+confirment l'enregistrement.
+
+À la première capture faite au clavier, Chrome et Edge demandent dans quel
+dossier enregistrer ; les suivantes s'y écrivent sans question. Ailleurs, ou si
+l'on refuse, les images partent dans les téléchargements. Un pincement de la
+main ne peut pas ouvrir ce choix (le navigateur l'exige d'une action au clavier
+ou à la souris) : tant qu'aucun dossier n'est choisi, il télécharge.
 
 ## Aperçu
 
