@@ -65,14 +65,11 @@ export interface Found extends Place {
  */
 export async function searchPlaces(query: string): Promise<Found[]> {
   const q = query.trim();
-  const coords = q.match(/^(-?\d+(?:[.,]\d+)?)\s*[,; ]\s*(-?\d+(?:[.,]\d+)?)$/);
+  const coords = parseCoordinates(q);
   if (coords) {
-    const lat = Number(coords[1].replace(',', '.'));
-    const lon = Number(coords[2].replace(',', '.'));
-    if (isLatLon(lat, lon)) {
-      const name = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-      return [{ name, label: `Coordonnées ${name}`, lat, lon }];
-    }
+    const { lat, lon } = coords;
+    const name = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+    return [{ name, label: `Coordonnées ${name}`, lat, lon }];
   }
   if (q.length < 2) return [];
   if (searchesWithGoogle()) return searchGoogle(q);
@@ -86,6 +83,18 @@ export async function searchPlaces(query: string): Promise<Found[]> {
   // lieu-dit, une rue) : seule une commune du nom exact passe avant l'étranger.
   const exact = (f: IgnFound) => f.municipality && simplify(f.name) === simplify(q);
   return [...french.filter(exact), ...abroad, ...french.filter((f) => !exact(f))];
+}
+
+/**
+ * Des coordonnées tapées telles quelles : « 48.5818, 7.7509 », « 48,58 ; 7,75 »,
+ * « 48.58 7.75 ». Deux nombres, et rien d'autre entre eux que des séparateurs.
+ */
+function parseCoordinates(q: string): { lat: number; lon: number } | null {
+  const NUMBER = /-?\d+(?:[.,]\d+)?/g;
+  const numbers = q.match(NUMBER);
+  if (numbers?.length !== 2 || !/^[\s,;]+$/.test(q.replace(NUMBER, ' '))) return null;
+  const [lat, lon] = numbers.map((n) => Number(n.replace(',', '.')));
+  return isLatLon(lat, lon) ? { lat, lon } : null;
 }
 
 /**
@@ -181,8 +190,8 @@ async function searchGoogle(q: string): Promise<Found[]> {
   return data.features.flatMap((f) => {
     const point = f.geometry?.coordinates;
     const box = f.bbox;
-    const lon = point ? point[0] : box ? (box[0] + box[2]) / 2 : NaN;
-    const lat = point ? point[1] : box ? (box[1] + box[3]) / 2 : NaN;
+    const lon = point ? point[0] : box ? (box[0] + box[2]) / 2 : Number.NaN;
+    const lat = point ? point[1] : box ? (box[1] + box[3]) / 2 : Number.NaN;
     if (!isLatLon(lat, lon)) return [];
     const label = f.properties.label;
     return [{ name: label.split(',')[0].trim(), label: `${label} (Google)`, lat, lon }];

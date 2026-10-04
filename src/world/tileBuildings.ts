@@ -21,7 +21,8 @@ import { PbfReader } from 'pbf';
 import type { CityFile, RawBuilding } from './realCity';
 import type { Place } from './place';
 
-const TILEJSON = 'https://tiles.openfreemap.org/planet';
+const ORIGIN = 'https://tiles.openfreemap.org/';
+const TILEJSON = `${ORIGIN}planet`;
 /** Seul niveau où la couche des bâtiments est complète. */
 const ZOOM = 14;
 const METERS_PER_DEG = 111320;
@@ -30,7 +31,11 @@ type Point = [number, number];
 
 export async function fetchTileBuildings(place: Place, halfSize: number): Promise<CityFile> {
   const meta = (await (await fetch(TILEJSON)).json()) as { tiles: string[] };
+  // Le chemin des tuiles change à chaque mise à jour de la carte, d'où la
+  // TileJSON ; mais on ne suit que des tuiles du même serveur.
   const template = meta.tiles[0];
+  if (!template?.startsWith(ORIGIN)) throw new Error('tuiles de bâtiments : adresse inattendue');
+  const path = template.slice(ORIGIN.length);
   const cosLat = Math.cos((place.lat * Math.PI) / 180);
   const dLat = halfSize / METERS_PER_DEG;
   const dLon = halfSize / (METERS_PER_DEG * cosLat);
@@ -51,11 +56,11 @@ export async function fetchTileBuildings(place: Place, halfSize: number): Promis
     for (let tx = tileX(place.lon - dLon); tx <= tileX(place.lon + dLon); tx++) {
       jobs.push(
         (async () => {
-          const url = template
+          const tilePath = path
             .replace('{z}', String(ZOOM))
             .replace('{x}', String(tx))
             .replace('{y}', String(ty));
-          const res = await fetch(url);
+          const res = await fetch(`${ORIGIN}${tilePath}`);
           if (!res.ok) throw new Error(`tuile de bâtiments indisponible (HTTP ${res.status})`);
           const layer = new VectorTile(new PbfReader(new Uint8Array(await res.arrayBuffer())))
             .layers.building;

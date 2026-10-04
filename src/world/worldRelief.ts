@@ -83,7 +83,7 @@ export async function fetchWorldRelief(place: Place): Promise<ReliefFile> {
     const tx = Math.floor(px / TILE);
     const ty = Math.floor(py / TILE);
     const h = tiles.get(`${tx}/${ty}`);
-    if (!h) return NaN;
+    if (!h) return Number.NaN;
     return h[(py - ty * TILE) * TILE + (px - tx * TILE)];
   };
   // Interpolation bilinéaire entre les centres de pixels.
