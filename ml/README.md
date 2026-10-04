@@ -23,27 +23,36 @@ graphique. Compter environ 6 Go sur le disque.
 ml/.venv/Scripts/python ml/preparer.py ml/datasets/drone-recon-<date>
 
 # 2. Entraîner YOLO nano, puis le mesurer sur la validation
-ml/.venv/Scripts/python ml/entrainer.py ml/datasets/drone-recon-<date>-yolo/data.yaml
+ml/.venv/Scripts/python ml/entrainer.py ml/datasets/drone-recon-<date>-yolo/data.yaml [époques] [nom] [--lot N]
 
 # 3. Le mesurer au réglage du simulateur (seuil, matrice de confusion)
-ml/.venv/Scripts/python ml/evaluer.py ml/datasets/drone-recon-<date>-yolo/data.yaml
+ml/.venv/Scripts/python ml/evaluer.py ml/datasets/drone-recon-<date>-yolo/data.yaml [poids] [appareil]
 
 # 4. L'exporter en ONNX pour le simulateur (touche O)
 ml/.venv/Scripts/python ml/exporter.py
 ```
 
-`preparer.py` met une case sur cinq en validation, avec ses quatre aléas : un
-même numéro de case montre le même endroit, et le modèle ne doit pas être
-validé sur des rues qu'il a déjà vues. Il fusionne aussi la classe « fissuré »
-avec « intact », car la ville dessinée ne la distingue pas à l'image.
+`preparer.py` sépare entraînement et validation par emplacement : le modèle ne
+doit pas être validé sur des rues qu'il a déjà vues. Il découpe la ville en
+zones de 250 m et en met une sur cinq en validation ; une image à cheval sur
+une zone de validation et une zone d'entraînement est écartée. Avec
+`--par-case`, il reproduit la séparation de la première version : une case du
+quadrillage sur cinq, avec ses quatre aléas. Il fusionne aussi la classe
+« fissuré » avec « intact », car la ville dessinée ne la distingue pas à
+l'image.
 
 `entrainer.py` part de YOLO nano préentraîné, le plus léger : il tient dans les
 4 Go d'une GTX 1650 et pourra tourner dans un navigateur. La demi-précision est
-coupée (`amp=False`) : elle donne des pertes NaN sur les GTX 16xx.
+coupée (`amp=False`) : elle donne des pertes NaN sur les GTX 16xx. Le nom
+range l'entraînement dans son propre dossier de `ml/runs/`. Sur un jeu dense
+comme la campagne variée, `--lot 8` évite de dépasser les 4 Go de la carte.
 
 `evaluer.py` refait sur la validation le calcul du rapport du simulateur :
 seuil de confiance de 0,3, rapprochement d'une boîte et d'un bâtiment à 50 % de
-recouvrement. Le mAP d'Ultralytics, lui, balaie tous les seuils.
+recouvrement. Le mAP d'Ultralytics, lui, balaie tous les seuils. Il écrit ses
+résultats à côté des poids, sous le nom du jeu évalué : on peut mesurer deux
+modèles sur la même validation. Quand le jeu a ses métadonnées, les scores sont
+détaillés par hauteur de vol.
 
 `exporter.py` écrit `public/models/detecteur.onnx` et sa fiche
 `detecteur.json` : taille d'entrée, classes, conditions d'entraînement, scores

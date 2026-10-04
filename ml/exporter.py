@@ -13,7 +13,8 @@ Un fichier de poids `.pt` est un fichier pickle : le charger peut exécuter du
 code. N'exporter que des poids dont on connaît l'origine, comme ceux que
 produit `entrainer.py`.
 
-Usage : python exporter.py [poids .pt]   (par défaut runs/detecteur/weights/best.pt)
+Usage : python exporter.py [poids .pt] [nom affiché]
+        poids : par défaut runs/detecteur/weights/best.pt
 """
 
 import csv
@@ -23,13 +24,34 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import yaml
 from ultralytics import YOLO
 
 ML = Path(__file__).resolve().parent
 PUBLIC = ML.parent / "public" / "models"
 IMGSZ = 640
-# Hauteur de vol des images d'entraînement : voir CONFIG.dataset.altitude.
-ALTITUDE = 60
+NAME = "YOLO11n — Drone Recon"
+# Hauteur du quadrillage (CONFIG.dataset.altitude), quand le jeu n'a pas de
+# métadonnées pour dire mieux.
+GRID_ALTITUDE = 60
+
+
+def altitudes_of(weights: Path) -> list[int]:
+    """Hauteurs de vol extrêmes des images d'entraînement, en mètres.
+
+    Lues dans les métadonnées du jeu préparé, que désigne la configuration de
+    l'entraînement ; à défaut, la hauteur du quadrillage.
+    """
+    args = weights.parent.parent / "args.yaml"
+    if args.exists():
+        data = Path(yaml.safe_load(args.read_text(encoding="utf-8"))["data"])
+        metadata = data.parent / "metadonnees.csv"
+        if metadata.exists():
+            with metadata.open(encoding="utf-8") as f:
+                heights = [float(r["altitude_sol_m"]) for r in csv.DictReader(f) if r.get("part") == "train"]
+            if heights:
+                return [round(min(heights)), round(max(heights))]
+    return [GRID_ALTITUDE, GRID_ALTITUDE]
 
 
 def epoch_of(weights: Path, checkpoint: dict, metrics: dict) -> int:
@@ -52,6 +74,7 @@ def epoch_of(weights: Path, checkpoint: dict, metrics: dict) -> int:
 
 def main() -> None:
     weights = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ML / "runs" / "detecteur" / "weights" / "best.pt"
+    name = sys.argv[2] if len(sys.argv) > 2 else NAME
     # Ultralytics garde le contenu des poids : inutile de les charger une seconde fois.
     model = YOLO(str(weights))
     checkpoint = model.ckpt or {}
@@ -61,11 +84,11 @@ def main() -> None:
     PUBLIC.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(onnx, PUBLIC / "detecteur.onnx")
     card = {
-        "name": "YOLO11n — Drone Recon",
+        "name": name,
         "format": "yolo",
         "inputSize": IMGSZ,
         "classes": [model.names[i] for i in sorted(model.names)],
-        "trainedAltitude": ALTITUDE,
+        "trainedAltitudes": altitudes_of(weights),
         "epoch": epoch_of(weights, checkpoint, metrics),
         "validation": {
             "mAP50": round(float(metrics.get("metrics/mAP50(B)", 0)), 3),
