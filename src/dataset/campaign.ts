@@ -287,6 +287,7 @@ export class DatasetCampaign {
       vUp: 0,
       pitch: 0,
       roll: 0,
+      landed: false,
     });
 
     // La vue verticale charge ses propres tuiles : on la rend jusqu'à ce que le

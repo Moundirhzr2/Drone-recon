@@ -1193,6 +1193,52 @@ export function rubbleHeap(
   spill: number,
   material: RubbleMaterial,
 ): Cesium.Geometry {
+  const { x0, y0, dx, dy, nx, ny, h, kept } = rubbleGrid(rings, height, spill, material.seed);
+  const W = dx * (nx - 1);
+  const D = dy * (ny - 1);
+  const b = new Builder();
+  const at = (i: number, j: number) =>
+    h[Math.min(ny - 1, Math.max(0, j)) * nx + Math.min(nx - 1, Math.max(0, i))];
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const gx = (at(i + 1, j) - at(i - 1, j)) / (2 * dx);
+      const gy = (at(i, j + 1) - at(i, j - 1)) / (2 * dy);
+      const len = Math.hypot(gx, gy, 1);
+      const up = 1 / len;
+      b.positions.push(x0 + i * dx, y0 + j * dy, h[j * nx + i]);
+      b.normals.push(-gx / len, -gy / len, up);
+      b.sts.push(i / (nx - 1), j / (ny - 1));
+      b.surfs.push(SURFACE.rubble, W, D);
+      b.facades.push(material.roof, up, material.seed, 0);
+    }
+  }
+  for (let j = 0; j < ny - 1; j++) {
+    for (let i = 0; i < nx - 1; i++) {
+      const a = j * nx + i;
+      if (!kept[a] || !kept[a + 1] || !kept[a + nx] || !kept[a + nx + 1]) continue;
+      b.indices.push(a, a + 1, a + nx + 1, a, a + nx + 1, a + nx);
+    }
+  }
+  return b.build();
+}
+
+/** La grille de hauteurs d'un tas de gravats : voir `rubbleHeap`. */
+export interface RubbleGrid {
+  /** Coin sud-ouest et pas de la grille, en mètres autour du centre. */
+  x0: number;
+  y0: number;
+  dx: number;
+  dy: number;
+  nx: number;
+  ny: number;
+  /** Hauteur de chaque nœud, au-dessus du pied du bâtiment. */
+  h: Float64Array;
+  /** Nœuds du tas ; les autres, trop loin du contour, ne portent pas de triangle. */
+  kept: Uint8Array;
+}
+
+/** Calcule la grille du tas : la forme, sans la géométrie. */
+export function rubbleGrid(rings: Ring[], height: number, spill: number, seed: number): RubbleGrid {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -1232,38 +1278,33 @@ export function rubbleHeap(
         base = height * 0.4 * k * k;
         kept[j * nx + i] = 1;
       }
-      const blocks = fbm(x / 3.2, y / 3.2, material.seed);
-      const bumps = valueNoise(x / 0.9, y / 0.9, material.seed + 7.3);
+      const blocks = fbm(x / 3.2, y / 3.2, seed);
+      const bumps = valueNoise(x / 0.9, y / 0.9, seed + 7.3);
       h[j * nx + i] = Math.max(0.03, base * (1 + 0.55 * blocks) + 0.22 * bumps * Math.min(1, base));
     }
   }
+  return { x0, y0, dx: W / (nx - 1), dy: D / (ny - 1), nx, ny, h, kept };
+}
 
-  const b = new Builder();
-  const dx = W / (nx - 1);
-  const dy = D / (ny - 1);
-  const at = (i: number, j: number) =>
-    h[Math.min(ny - 1, Math.max(0, j)) * nx + Math.min(nx - 1, Math.max(0, i))];
-  for (let j = 0; j < ny; j++) {
-    for (let i = 0; i < nx; i++) {
-      const gx = (at(i + 1, j) - at(i - 1, j)) / (2 * dx);
-      const gy = (at(i, j + 1) - at(i, j - 1)) / (2 * dy);
-      const len = Math.hypot(gx, gy, 1);
-      const up = 1 / len;
-      b.positions.push(x0 + i * dx, y0 + j * dy, h[j * nx + i]);
-      b.normals.push(-gx / len, -gy / len, up);
-      b.sts.push(i / (nx - 1), j / (ny - 1));
-      b.surfs.push(SURFACE.rubble, W, D);
-      b.facades.push(material.roof, up, material.seed, 0);
-    }
-  }
-  for (let j = 0; j < ny - 1; j++) {
-    for (let i = 0; i < nx - 1; i++) {
-      const a = j * nx + i;
-      if (!kept[a] || !kept[a + 1] || !kept[a + nx] || !kept[a + nx + 1]) continue;
-      b.indices.push(a, a + 1, a + nx + 1, a, a + nx + 1, a + nx);
-    }
-  }
-  return b.build();
+/**
+ * Hauteur du tas en un point, sur les mêmes triangles que ceux du rendu :
+ * le drone se pose à la surface qu'on voit. `null` hors du tas.
+ */
+export function rubbleHeightAt(g: RubbleGrid, x: number, y: number): number | null {
+  const fx = (x - g.x0) / g.dx;
+  const fy = (y - g.y0) / g.dy;
+  const i = Math.floor(fx);
+  const j = Math.floor(fy);
+  if (i < 0 || j < 0 || i >= g.nx - 1 || j >= g.ny - 1) return null;
+  const a = j * g.nx + i;
+  const { h, kept, nx } = g;
+  if (!kept[a] || !kept[a + 1] || !kept[a + nx] || !kept[a + nx + 1]) return null;
+  const u = fx - i;
+  const v = fy - j;
+  // Chaque maille est coupée selon sa diagonale (i, j) -> (i + 1, j + 1).
+  return u >= v
+    ? h[a] + u * (h[a + 1] - h[a]) + v * (h[a + nx + 1] - h[a + 1])
+    : h[a] + v * (h[a + nx] - h[a]) + u * (h[a + nx + 1] - h[a + nx]);
 }
 
 /**
@@ -1277,29 +1318,34 @@ export function rubbleHeap(
  * est un mur mis à nu, la tranche du haut des gravats. Les deux géométries
  * sont rendues séparément, parce qu'elles n'ont pas la même teinte.
  */
-export function brokenWalls(
-  rings: Ring[],
-  thickness: number,
-  fullHeight: number,
-  variant: FacadeVariant,
-  material: RubbleMaterial,
-  heightAt: (s: number, corner: number, index: number) => number,
-): { outer: Cesium.Geometry | null; inner: Cesium.Geometry | null } {
-  const outer = new Builder();
-  const inner = new Builder();
-  const inside = [material.roof, 0, material.seed, 0];
-  let s0 = 0;
+/** Le tracé d'un anneau pour les murs cassés : voir `wallLayout`. */
+export interface WallRing {
+  ring: Ring;
+  /** Abscisse de chaque sommet le long du contour. */
+  starts: number[];
+  /** Longueur de chaque côté, du sommet `i` au suivant. */
+  lengths: number[];
+  perimeter: number;
+  /** Distance cyclique au plus proche vrai angle, et le numéro de cet angle. */
+  nearest: (at: number) => [number, number];
+}
 
-  for (const ring of rings) {
+/**
+ * Le tracé des murs cassés, commun au rendu (`brokenWalls`) et aux collisions
+ * (`brokenWallHeightAt`).
+ */
+export function wallLayout(rings: Ring[]): WallRing[] {
+  return rings.map((ring) => {
     const n = ring.length;
-    // Abscisse de chaque sommet le long du contour.
     const starts: number[] = [];
+    const lengths: number[] = [];
     let perimeter = 0;
     for (let i = 0; i < n; i++) {
       starts.push(perimeter);
       const [ax, ay] = ring[i];
       const [bx, by] = ring[(i + 1) % n];
-      perimeter += Math.hypot(bx - ax, by - ay);
+      lengths.push(Math.hypot(bx - ax, by - ay));
+      perimeter += lengths[i];
     }
     // Les vrais angles, où le mur tourne de plus de 35°. Les contours de
     // l'IGN ont bien d'autres sommets, tous les mètres ou deux le long d'une
@@ -1329,7 +1375,71 @@ export function brokenWalls(
       }
       return [best, index];
     };
+    return { ring, starts, lengths, perimeter, nearest };
+  });
+}
 
+/**
+ * Hauteur des murs cassés en un point, sur les mêmes tronçons que le rendu :
+ * un tronçon tous les 2 m au plus, au sommet droit entre ses deux bouts.
+ * `null` hors de l'épaisseur d'un mur, ou là où il est tombé.
+ */
+export function brokenWallHeightAt(
+  layout: WallRing[],
+  thickness: number,
+  heightAt: (s: number, corner: number, index: number) => number,
+  x: number,
+  y: number,
+): number | null {
+  let best: number | null = null;
+  let s0 = 0;
+  for (const { ring, starts, lengths, perimeter, nearest } of layout) {
+    const n = ring.length;
+    for (let i = 0; i < n; i++) {
+      const L = lengths[i];
+      if (L < 0.05) continue;
+      const [ax, ay] = ring[i];
+      const [bx, by] = ring[(i + 1) % n];
+      const ux = (bx - ax) / L;
+      const uy = (by - ay) / L;
+      // Le long du segment, et vers l'intérieur : le mur est épais de
+      // `thickness` en dedans du contour (normale extérieure à droite).
+      const along = (x - ax) * ux + (y - ay) * uy;
+      const depth = (y - ay) * ux - (x - ax) * uy;
+      if (along < 0 || along > L || depth < 0 || depth > thickness) continue;
+      const steps = Math.max(1, Math.ceil(L / 2.0));
+      const piece = L / steps;
+      const t = Math.min(steps - 1, Math.floor(along / piece));
+      const zAt = (a: number) => {
+        const [corner, index] = nearest(starts[i] + a);
+        return Math.max(0, heightAt(s0 + starts[i] + a, corner, index));
+      };
+      const za = zAt(t * piece);
+      const zb = zAt((t + 1) * piece);
+      if (za < 0.05 && zb < 0.05) continue;
+      const z = za + ((zb - za) * (along - t * piece)) / piece;
+      if (best === null || z > best) best = z;
+    }
+    s0 += perimeter;
+  }
+  return best;
+}
+
+export function brokenWalls(
+  rings: Ring[],
+  thickness: number,
+  fullHeight: number,
+  variant: FacadeVariant,
+  material: RubbleMaterial,
+  heightAt: (s: number, corner: number, index: number) => number,
+): { outer: Cesium.Geometry | null; inner: Cesium.Geometry | null } {
+  const outer = new Builder();
+  const inner = new Builder();
+  const inside = [material.roof, 0, material.seed, 0];
+  let s0 = 0;
+
+  for (const { ring, starts, perimeter, nearest } of wallLayout(rings)) {
+    const n = ring.length;
     for (let i = 0; i < n; i++) {
       const [ax, ay] = ring[i];
       const [bx, by] = ring[(i + 1) % n];

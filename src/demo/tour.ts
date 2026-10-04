@@ -115,6 +115,7 @@ export async function runTour(ctx: TourContext): Promise<void> {
       vEast: 0,
       vNorth: 0,
       vUp: 0,
+      landed: false,
     });
   };
 

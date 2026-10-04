@@ -55,6 +55,7 @@ Disposition **Mode 2**, celle des radiocommandes de drone :
 | Pincement pouce-index, main droite | capture : vue du drone et photo nadir     |
 | Pincement pouce-index, main gauche | basculer la vue diagnostique              |
 | Deux poings fermés                 | stabilisation : le drone fige sa position |
+| Main gauche baissée jusqu'au sol   | se poser ; la relever fait redécoller     |
 | Une main hors champ                | ses deux axes retombent à zéro            |
 
 Au démarrage, garder les deux mains **ouvertes, au centre et immobiles** pendant

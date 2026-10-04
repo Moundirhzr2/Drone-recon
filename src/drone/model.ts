@@ -54,6 +54,8 @@ export class DroneModel {
   private visible = true;
   /** Angle courant des hélices, en radians. */
   private spin = 0;
+  /** Régime des hélices, de 0 (posé, moteurs coupés) à 1 (en vol). */
+  private rpm = 1;
 
   /** Repère monde du drone, recalculé une fois par image. */
   private frame = Cesium.Matrix4.clone(Cesium.Matrix4.IDENTITY);
@@ -130,7 +132,9 @@ export class DroneModel {
     model.modelMatrix = this.frame;
     if (!model.ready || !this.visible) return;
 
-    this.spin = (this.spin + dt * SPIN * 2 * Math.PI) % (2 * Math.PI);
+    // Posé, les hélices ralentissent jusqu'à l'arrêt ; elles repartent au décollage.
+    this.rpm += ((this.state.landed ? 0 : 1) - this.rpm) * Math.min(1, dt * 2.5);
+    this.spin = (this.spin + dt * SPIN * this.rpm * 2 * Math.PI) % (2 * Math.PI);
     for (const p of PROPELLERS) {
       const node = model.getNode(p.node);
       if (!node) continue;
@@ -164,7 +168,8 @@ export class DroneModel {
     );
 
     Cesium.Transforms.eastNorthUpToFixedFrame(
-      Cesium.Cartesian3.fromDegrees(s.lon, s.lat, s.msl - s.agl + 0.3),
+      // Sur ce qui est sous le drone : le sol, un toit ou des gravats.
+      Cesium.Cartesian3.fromDegrees(s.lon, s.lat, s.floor + 0.3),
       Cesium.Ellipsoid.WGS84,
       this.groundFrame,
     );

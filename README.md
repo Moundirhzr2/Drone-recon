@@ -68,6 +68,10 @@ travaux peut s'y substituer sans toucher au reste.
 - **Drone d'inspection** à la taille réelle — bras en carbone, hélices vrillées
   qui tournent, nacelle de caméra, patins, feux de navigation —, généré par le
   code en glTF.
+- **Collisions et atterrissage** — bâtiments et ruines sont solides : le drone
+  bute contre une façade et glisse le long du mur ; il se pose au sol, sur un
+  toit ou sur les gravats d'un bâtiment effondré, à la surface même qui est
+  dessinée.
 - **Pilotage gestuel** — image de la webcam traitée par OpenCV (mesure et
   correction de l'éclairage, retour vidéo avec la commande reconnue), mains
   repérées par MediaPipe, disposition Mode 2
@@ -169,6 +173,25 @@ Aux mains : la main gauche règle l'altitude et la rotation, la main droite le
 déplacement ; un pincement droit prend une capture, un pincement gauche bascule
 le diagnostic, deux poings fermés stabilisent le drone. Le détail est dans
 [pilotage gestuel](docs/pilotage-gestuel.md).
+
+## Collisions et atterrissage
+
+Bâtiments et ruines sont solides. Une façade arrête le drone, qui glisse le long
+du mur s'il l'aborde de biais ; un message signale le contact. Une marche basse —
+le bord d'un tas de gravats, un éclat au sol — se franchit : le drone s'élève
+au-dessus.
+
+Pour se poser, il suffit de descendre jusqu'au contact (`↓`, ou main gauche
+vers le bas) : au sol, sur un toit, ou sur les gravats d'une ruine. Dans les
+derniers mètres, la descente ralentit d'elle-même. Posé, le drone coupe ses
+moteurs : l'étiquette de la télémétrie passe à `POSÉ`, les hélices s'arrêtent,
+et la ligne `SOUS DRONE`, hauteur au-dessus de ce qui est dessous, tombe à zéro.
+Remettre les gaz (`↑`, ou main gauche vers le haut) le fait redécoller.
+
+Pour survoler puis se poser sur des débris : lancer un sinistre, ou poser des
+dégâts à la main (`E`), descendre au-dessus d'un bâtiment effondré, et se poser
+sur le tas. Le drone s'y pose sur la surface même qui est dessinée : le rendu et
+les collisions lisent la forme des ruines dans le même code.
 
 ## Captures
 
@@ -292,6 +315,10 @@ l'eau.
   de toit voisin au-dessus d'un mur mitoyen. Des fissures ne s'y voient pas. Il
   faut aussi une connexion Internet, et la ville est celle de la date des
   prises de vue de Google.
+- **Seuls les bâtiments sont solides.** Arbres, lampadaires et fumée ne gênent
+  pas le vol. Dans la ville photoréaliste, les collisions suivent les contours
+  de l'IGN et non le relevé de Google : à un ou deux mètres près, le drone peut
+  buter avant une façade du relevé, ou en frôler une.
 - **Le séisme triche sur l'échelle.** Sa profondeur focale est ramenée à 220 m
   pour que le gradient soit visible à l'échelle du quartier ; un vrai foyer
   frapperait la zone de façon uniforme.

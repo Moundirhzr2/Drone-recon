@@ -75,9 +75,21 @@ export const CONFIG = {
     drag: 1.9,
     /** Inclinaison visuelle maximale du châssis, en degrés. */
     maxTilt: 22,
-    /** Plafond et plancher de vol au-dessus du sol, en mètres. */
-    minAGL: 3,
+    /**
+     * Plancher de vol : la hauteur du centre du drone posé sur ses pieds, en
+     * mètres. Il se pose ainsi au sol, sur un toit ou sur des gravats.
+     */
+    minAGL: 0.3,
+    /** Plafond de vol au-dessus du sol, en mètres. */
     maxAGL: 400,
+    /** Rayon du drone, hélices comprises, pour les collisions : 1,2 m d'envergure. */
+    radius: 0.6,
+    /** Plus haute marche que le drone franchit en s'élevant, en mètres ; au-delà, c'est un mur. */
+    stepUp: 0.5,
+    /** Part de la vitesse rendue par un mur, à rebours. */
+    bounce: 0.25,
+    /** Gaz à dépasser pour décoller, ou en descente pour se poser (entre 0 et 1). */
+    takeoffThrottle: 0.15,
     /** Autonomie simulée, en secondes. */
     batteryLife: 900,
   },

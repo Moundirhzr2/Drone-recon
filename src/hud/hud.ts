@@ -9,6 +9,7 @@
  */
 
 import { emit } from '../core/bus';
+import { CONFIG } from '../core/config';
 import { toDMS, groundDistance, wrap360 } from '../core/math';
 import { DAMAGE_INFO, DAMAGE_ORDER, type Building, type DamageState } from '../world/buildings';
 import type { DroneState } from '../drone/drone';
@@ -65,6 +66,7 @@ export class GpsPanel {
       ['lon', 'LONGITUDE', ''],
       ['dms', 'DMS', ''],
       ['agl', 'ALT SOL', 'm'],
+      ['clr', 'SOUS DRONE', 'm'],
       ['msl', 'ALT MER', 'm'],
       ['spd', 'VIT SOL', 'm/s'],
       ['vsi', 'VIT VERT', 'm/s'],
@@ -95,6 +97,11 @@ export class GpsPanel {
     put(this.cells.get('lon')!, s.lon.toFixed(6) + '°');
     put(this.cells.get('dms')!, `${toDMS(s.lat, 'lat')}`);
     put(this.cells.get('agl')!, s.agl.toFixed(1));
+    // Hauteur des pieds au-dessus de ce qui est dessous : sol, toit ou gravats.
+    const clearance = Math.max(0, s.msl - CONFIG.drone.minAGL - s.floor);
+    const clrCell = this.cells.get('clr')!;
+    put(clrCell, clearance.toFixed(1));
+    clrCell.style.color = !s.landed && clearance < 2 ? 'var(--warn)' : '';
     put(this.cells.get('msl')!, s.msl.toFixed(1));
     put(this.cells.get('spd')!, this.speed(s).toFixed(1));
     put(this.cells.get('vsi')!, (s.vUp >= 0 ? '+' : '') + s.vUp.toFixed(1));
@@ -124,8 +131,8 @@ export class GpsPanel {
     this.needle.setAttribute('transform', `rotate(${-hdg})`);
 
     this.fix.className = 'dot ' + (s.battery > 0.05 ? 'live' : 'warn');
-    put(this.modeTag, holding ? 'STABLE' : 'MANUEL');
-    this.modeTag.className = 'tag' + (holding ? ' on' : '');
+    put(this.modeTag, s.landed ? 'POSÉ' : holding ? 'STABLE' : 'MANUEL');
+    this.modeTag.className = 'tag' + (s.landed || holding ? ' on' : '');
   }
 
   private speed(s: DroneState): number {

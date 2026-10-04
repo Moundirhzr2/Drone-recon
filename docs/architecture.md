@@ -7,9 +7,10 @@ src/
 ├── core/         configuration, bus d'événements, maths (One Euro, géodésie, PRNG)
 ├── world/        scène Cesium, ville réelle (IGN) et ville générée de secours,
 │                 ville photoréaliste (Google), relief, états de dommage, rendu du
-│                 bâti par carreaux, textures, courbe de fragilité, profils de
-│                 qualité
-├── drone/        physique de vol, châssis 3D, caméras, vue nadir, photos
+│                 bâti par carreaux, forme des ruines, obstacles, textures,
+│                 courbe de fragilité, profils de qualité
+├── drone/        physique de vol, collisions et atterrissage, châssis 3D,
+│                 caméras, vue nadir, captures
 ├── input/        abstraction des commandes, clavier, webcam (OpenCV), suivi des mains (MediaPipe)
 ├── diagnostic/   détecteur de dommages, surcouches, métriques
 ├── disaster/     scénarios, champs d'intensité, chronologie et lecture
@@ -224,12 +225,39 @@ subtilités apprises à l'écran :
    Dans le shader du relevé, par ailleurs, les couleurs du matériau sont
    linéaires : une teinte choisie à l'écran y ressort deux fois trop claire.
 
+## Collisions et atterrissage
+
+Le drone se heurte à ce qui est dessiné, et à rien d'autre.
+`world/obstacles.ts` donne, en tout point, l'altitude du plus haut solide : le
+toit plat d'un bâtiment debout, ou, pour une ruine, la surface de son tas, le
+haut de ses murs restés debout et ses éclats au sol. La forme des ruines est
+calculée par `world/ruins.ts` et `world/facade.ts`, que lit aussi le rendu :
+mesurée contre la géométrie de Cesium (`scene.sampleHeightMostDetailed`) sur
+deux ruines, la surface des collisions s'en écarte de 3 mm en médiane, de 16 cm
+au plus pour 95 % des points. Sur un éclat incliné, elle compte jusqu'à son
+coin le plus haut : le drone ne s'enfonce jamais dans ce qu'on voit.
+
+Dans `drone/drone.ts`, chaque pas de physique interroge les obstacles au point
+d'arrivée, au centre du drone et à quatre points autour, au rayon de ses
+hélices. Si le plancher, là-bas, dépasse de plus d'une marche (50 cm) la hauteur
+où vole le drone, c'est un mur : le drone n'avance que de la composante qui le
+longe. Sinon il s'élève au-dessus, comme au-dessus du relief. Au contact, en
+descente, il se pose ; les gaz seuls le font repartir.
+
+L'interrogation coûte 10 µs en centre-ville, 50 µs au milieu des ruines : un
+index par cases de 25 m, et chaque bâtiment, chaque éclat, écarté sur sa
+distance avant tout calcul de forme. En vol, cela fait 0,03 ms par image ; au
+pire, poussé contre un mur au milieu des ruines, 0,25 ms. Pendant l'export d'un
+jeu de données, la physique est suspendue : la campagne place le drone elle-même,
+à l'altitude de chaque prise de vue.
+
 ## Inspecter la simulation depuis la console
 
 `window.__sim` expose l'état interne dans la console du navigateur :
 
 ```js
-__sim.drone.state; // position, vitesses, cap, batterie
+__sim.drone.state; // position, vitesses, cap, batterie, posé ou non
+__sim.obstacles.under(lon, lat, 0.6); // le plus haut solide sous le drone
 __sim.city.buildings; // les 2 282 bâtiments et leur état réel
 __sim.nadir.geometry; // géométrie de la dernière prise de vue
 __sim.analyse(__sim.city.buildings, __sim.nadir.geometry); // détections et métriques

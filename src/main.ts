@@ -28,6 +28,7 @@ import { isMulhouse, MULHOUSE, placeFromUrl, searchPlaces, type Place } from './
 import { PlacePicker } from './hud/placePicker';
 import { BuildingRenderer, RENDER_LABEL, type RenderMode } from './world/render';
 import { PhotorealCity, wantsPhotoreal } from './world/photoreal';
+import { Obstacles, type Solid } from './world/obstacles';
 import { Drone } from './drone/drone';
 import { DroneModel } from './drone/model';
 import { DroneCamera } from './drone/camera';
@@ -159,7 +160,9 @@ async function main(): Promise<void> {
   const groundAt = relief
     ? (lon: number, lat: number) => relief.heightAt(lon, lat)
     : () => city.ground;
-  const drone = new Drone(groundAt);
+  // Bâtiments et ruines sont solides : le drone s'y heurte et s'y pose.
+  const obstacles = new Obstacles(city, () => photoreal?.shown ?? false);
+  const drone = new Drone(groundAt, (lon, lat, r) => obstacles.under(lon, lat, r));
   // Le châssis 3D est optionnel : voir CONFIG.drone.showModel.
   const model = CONFIG.drone.showModel ? DroneModel.create(viewer, drone.state) : null;
   const camera = new DroneCamera(scene.camera, drone.state);
@@ -183,6 +186,36 @@ async function main(): Promise<void> {
   const gps = new GpsPanel(drone.home);
   const nadirPanel = new NadirPanel();
   const handsPanel = new HandsPanel();
+  // Contacts, atterrissages et décollages : un message, sans en noyer le pilote
+  // quand il reste appuyé contre un mur.
+  const onWhat = (solid: Solid | null) => {
+    if (!solid) return 'le sol';
+    const name = solid.building.name;
+    if (solid.kind === 'toit') return `le toit (${name})`;
+    if (solid.kind === 'mur') return `un mur resté debout (${name})`;
+    return `les gravats (${name})`;
+  };
+  let lastContact = 0;
+  drone.onEvent = (e) => {
+    if (e.type === 'contact') {
+      const now = performance.now();
+      if (now - lastContact < 1500) return;
+      lastContact = now;
+      const what = e.solid.kind === 'toit' ? 'façade' : e.solid.kind === 'mur' ? 'mur' : 'gravats';
+      handsPanel.setMessage(
+        `Contact : ${what} (${e.solid.building.name}) — le drone s'arrête`,
+        'err',
+      );
+    } else if (e.type === 'landed') {
+      const hard = e.speed > 2.5 ? ` — atterrissage brutal, ${e.speed.toFixed(1)} m/s` : '';
+      handsPanel.setMessage(
+        `Posé sur ${onWhat(e.on)}${hard}. Gaz pour redécoller`,
+        hard ? 'err' : 'ok',
+      );
+    } else {
+      handsPanel.setMessage('Décollage', 'ok');
+    }
+  };
   const report = new ReportPanel();
   const gallery = new Gallery();
   const hudToggle = new HudToggle();
@@ -248,7 +281,7 @@ async function main(): Promise<void> {
         scenarioName.value = file.name;
         const v = file.viewpoint;
         if (v) {
-          Object.assign(drone.state, { ...v, vEast: 0, vNorth: 0, vUp: 0 });
+          Object.assign(drone.state, { ...v, vEast: 0, vNorth: 0, vUp: 0, landed: false });
           drone.state.msl = groundAt(v.lon, v.lat) + v.agl;
           camera.snap();
         }
@@ -654,7 +687,9 @@ async function main(): Promise<void> {
     // coup, on repart simplement du présent.
     accumulator = Math.min(accumulator + raw, 0.25);
     while (accumulator >= FIXED_STEP) {
-      drone.update(FIXED_STEP, ctl);
+      // La campagne du jeu de données place le drone elle-même, à l'altitude
+      // de chaque prise de vue : les collisions ne doivent pas l'en déloger.
+      if (!dataset.isRunning) drone.update(FIXED_STEP, ctl);
       accumulator -= FIXED_STEP;
     }
 
@@ -774,6 +809,7 @@ async function main(): Promise<void> {
       scene,
       city,
       drone,
+      obstacles,
       renderer,
       photos,
       hands,

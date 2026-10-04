@@ -44,6 +44,7 @@ import {
   type RoofVariant,
   type RubbleMaterial,
 } from './facade';
+import { CHUNK_SINK, debrisChunks, hash01, heapOf, ruinWalls } from './ruins';
 
 /** Modes de rendu, cyclés par la touche M. */
 export type RenderMode = 'realiste' | 'wireframe' | 'scan';
@@ -145,13 +146,6 @@ function eraOf(year: number): 0 | 1 | 2 {
   return year < 1914 ? 0 : year < 1975 ? 1 : 2;
 }
 
-/** Nombre entre 0 et 1, stable pour un identifiant donné. */
-function hash01(id: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619) >>> 0;
-  return (h % 10007) / 10007;
-}
-
 /**
  * Style de façade : époque, usage, graine, commerces au rez-de-chaussée. Un
  * immeuble d'habitation ancien ou d'après-guerre d'au moins trois niveaux a
@@ -211,14 +205,6 @@ interface Part {
  */
 function signature(b: Building): string {
   return `${b.state}|${Math.round(b.damage * 20)}|${b.debris.length}`;
-}
-
-/** Bruit lisse en une dimension, entre 0 et 1 : pour déchiqueter le haut des murs. */
-function noise1(x: number, salt: string): number {
-  const i = Math.floor(x);
-  const f = x - i;
-  const u = f * f * (3 - 2 * f);
-  return hash01(`${salt}:${i}`) * (1 - u) + hash01(`${salt}:${i + 1}`) * u;
 }
 
 /**
@@ -844,36 +830,28 @@ export class BuildingRenderer {
       );
     }
 
-    // Gravats projetés au sol : chaque débris du simulateur devient un éclat
-    // plus petit que lui, incliné au hasard et à moitié enfoncé. Des blocs
-    // droits et entiers de plusieurs mètres faisaient des caisses posées là.
+    // Gravats projetés au sol : leur forme est dans `ruins.ts`, que les
+    // collisions lisent aussi.
     const mLon = 111320 * Math.cos(b.lat * DEG);
     const chunk: FacadeVariant = [roofVariant[0], 0.45, hash01(b.id + 'g'), 0];
-    b.debris.forEach((d, i) => {
-      const r1 = hash01(`${b.id}:${i}:a`);
-      const r2 = hash01(`${b.id}:${i}:b`);
-      const r3 = hash01(`${b.id}:${i}:c`);
-      const size = d.size * (0.35 + 0.3 * r1);
-      const height = Math.min(size * 0.7, 0.4 + d.height * 0.35 * r2);
-      const east = d.dx + (r2 - 0.5) * d.size;
-      const north = d.dy + (r3 - 0.5) * d.size;
+    debrisChunks(b).forEach((c, i) => {
       const frame = Cesium.Transforms.headingPitchRollToFixedFrame(
         Cesium.Cartesian3.fromDegrees(
-          b.lon + east / mLon,
-          b.lat + north / 111320,
-          b.baseHeight + height * 0.2,
+          b.lon + c.east / mLon,
+          b.lat + c.north / 111320,
+          b.baseHeight + c.height * CHUNK_SINK,
         ),
-        new Cesium.HeadingPitchRoll(d.rot * DEG, (r1 - 0.5) * 0.7, (r3 - 0.5) * 0.7),
+        new Cesium.HeadingPitchRoll(c.heading * DEG, c.pitch, c.roll),
       );
       parts.push(
         this.part(
           `${b.id}:ruine:gravats${i}`,
           b,
           texturedBox(
-            new Cesium.Cartesian3(size, size * (0.5 + 0.4 * r3), height),
+            new Cesium.Cartesian3(c.length, c.width, c.height),
             SURFACE.rubble,
-            size,
-            height,
+            c.length,
+            c.height,
             chunk,
           ),
           frame,
@@ -895,47 +873,42 @@ export class BuildingRenderer {
   private ruinParts(b: Building, h: number, roofVariant: RoofVariant): Part[] {
     const rings = b.footprint!;
     const frame = localFrame(b.lon, b.lat, b.baseHeight);
-    const material: RubbleMaterial = { roof: roofVariant[0], seed: hash01(b.id + 'g') };
+    const heap = heapOf(b);
+    const material: RubbleMaterial = { roof: roofVariant[0], seed: heap.seed };
     const parts: Part[] = [];
     const outline = () => footprintOutline(rings, h);
 
-    let walls: ReturnType<typeof brokenWalls>;
+    // Les murs restés debout : leur hauteur le long du contour est dans
+    // `ruins.ts`, que les collisions lisent aussi.
+    const shape = ruinWalls(b);
+    const walls = brokenWalls(
+      rings,
+      shape.thickness,
+      b.height,
+      facadeVariant(b),
+      material,
+      shape.heightAt,
+    );
     if (b.state === 'collapsed') {
       parts.push(
         this.part(
           `${b.id}:ruine:tas`,
           b,
-          rubbleHeap(rings, h, 2.6, material),
+          rubbleHeap(rings, heap.height, heap.spill, material),
           frame,
           RUBBLE,
           outline,
         ),
       );
-      // Des pans d'angle en marches : pleine hauteur contre l'angle, un palier
-      // plus bas, puis plus rien.
-      walls = brokenWalls(rings, 0.4, b.height, facadeVariant(b), material, (s, corner, index) => {
-        const r = hash01(`${b.id}:angle${index}`);
-        if (r > 0.45) return 0;
-        const reach = 1.8 + 3 * hash01(`${b.id}:long${index}`);
-        if (corner >= reach) return 0;
-        const tall = Math.min(b.height * 0.7, h + 1.5 + 6 * r);
-        const step = corner < reach * 0.55 ? 1 : 0.5;
-        return tall * step + 0.25 * (noise1(s * 1.7, b.id) - 0.5);
-      });
     } else {
-      // Une maçonnerie casse par paliers, le long de ses rangs : des tronçons
-      // de 2 à 6 m, chacun à sa hauteur, quelques brèches profondes, et des
-      // angles qui tiennent mieux que le reste. Un bruit fin, de quelques
-      // décimètres seulement, rend la cassure irrégulière sans la hérisser.
-      const LEVELS = [0.35, 0.62, 0.8, 0.92, 1];
-      walls = brokenWalls(rings, 0.35, b.height, facadeVariant(b), material, (s, corner) => {
-        const piece = Math.floor(s / 4 + 0.6 * noise1(s / 9, `${b.id}:troncon`));
-        const level = LEVELS[Math.floor(hash01(`${b.id}:palier${piece}`) * LEVELS.length)];
-        const solid = corner < 1.2 ? 1 : level;
-        return h * solid + 0.3 * (noise1(s * 1.7, `${b.id}:cassure`) - 0.5);
-      });
       parts.push(
-        this.part(`${b.id}:ruine:tas`, b, rubbleHeap(rings, h * 0.3, 0.8, material), frame, RUBBLE),
+        this.part(
+          `${b.id}:ruine:tas`,
+          b,
+          rubbleHeap(rings, heap.height, heap.spill, material),
+          frame,
+          RUBBLE,
+        ),
       );
     }
     if (walls.outer) {
