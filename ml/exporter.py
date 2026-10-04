@@ -9,6 +9,10 @@ fichiers.
 La sortie reste brute (`nms=False`) : le tri des boîtes se fait dans le
 navigateur, ce qui garde le graphe ONNX simple et lisible par onnxruntime-web.
 
+Un fichier de poids `.pt` est un fichier pickle : le charger peut exécuter du
+code. N'exporter que des poids dont on connaît l'origine, comme ceux que
+produit `entrainer.py`.
+
 Usage : python exporter.py [poids .pt]   (par défaut runs/detecteur/weights/best.pt)
 """
 
@@ -19,7 +23,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import torch
 from ultralytics import YOLO
 
 ML = Path(__file__).resolve().parent
@@ -49,10 +52,10 @@ def epoch_of(weights: Path, checkpoint: dict, metrics: dict) -> int:
 
 def main() -> None:
     weights = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ML / "runs" / "detecteur" / "weights" / "best.pt"
-    checkpoint = torch.load(weights, map_location="cpu", weights_only=False)
-    metrics = checkpoint.get("train_metrics") or {}
-
+    # Ultralytics garde le contenu des poids : inutile de les charger une seconde fois.
     model = YOLO(str(weights))
+    checkpoint = model.ckpt or {}
+    metrics = checkpoint.get("train_metrics") or {}
     onnx = Path(model.export(format="onnx", imgsz=IMGSZ, simplify=True, dynamic=False, nms=False, device="cpu"))
 
     PUBLIC.mkdir(parents=True, exist_ok=True)
@@ -72,7 +75,9 @@ def main() -> None:
         },
         "exportedAt": datetime.now().isoformat(timespec="seconds"),
     }
-    (PUBLIC / "detecteur.json").write_text(json.dumps(card, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (PUBLIC / "detecteur.json").write_text(
+        json.dumps(card, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
 
     size = (PUBLIC / "detecteur.onnx").stat().st_size / 1e6
     print(f"modèle : {PUBLIC / 'detecteur.onnx'} ({size:.1f} Mo)")
