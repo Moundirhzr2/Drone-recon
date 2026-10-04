@@ -3,3 +3,5 @@
 ultralytics>=8.4
 onnx
 onnxslim
+# Vérifie l'export ONNX (exporter.py) ; Ultralytics l'installerait sinon de lui-même.
+onnxruntime

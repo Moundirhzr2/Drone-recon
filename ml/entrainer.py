@@ -44,7 +44,8 @@ def main() -> None:
         seed=7301,
         plots=True,
     )
-    metrics = model.val(data=str(data), split="val", plots=True)
+    # Sans `project`, Ultralytics écrirait dans runs/ sous le dossier courant.
+    metrics = model.val(data=str(data), split="val", plots=True, project=str(RUNS), name="validation", exist_ok=True)
     print(f"mAP50 {metrics.box.map50:.3f} · mAP50-95 {metrics.box.map:.3f}")
     print(f"meilleurs poids : {RUNS / 'detecteur' / 'weights' / 'best.pt'}")
 
