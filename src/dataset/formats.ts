@@ -173,6 +173,8 @@ export function readme(records: ImageRecord[], settings: ReadmeSettings): string
   const gsd = records[0]?.gsd ?? 0;
   const footprint = records[0]?.footprint ?? 0;
   const total = [...counts.values()].reduce((a, b) => a + b, 0);
+  const fr = (v: number, digits = 0) =>
+    v.toLocaleString('fr-FR', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
   return `# Drone Recon — jeu de données
 
@@ -184,14 +186,14 @@ ${settings.createdAt.toLocaleString('fr-FR')}.${settings.complete ? '' : '\n\n**
 
 | | |
 | --- | --- |
-| Images | ${records.length}, ${settings.imageSize} × ${settings.imageSize} px, JPEG |
-| Bâtiments annotés | ${total} |
+| Images | ${fr(records.length)}, ${settings.imageSize} × ${settings.imageSize} px, JPEG |
+| Bâtiments annotés | ${fr(total)} |
 | Prise de vue | verticale, nord en haut, à ${settings.altitude} m du sol, champ de ${settings.fov}° |
-| Emprise d'une image | ${footprint.toFixed(1)} m de côté, soit ${gsd.toFixed(1)} cm par pixel |
+| Emprise d'une image | ${fr(footprint, 1)} m de côté, soit ${fr(gsd, 1)} cm par pixel |
 
 | Aléa | Images |
 | --- | --- |
-${[...byScenario.values()].map((s) => `| ${s.label} | ${s.images} |`).join('\n')}
+${[...byScenario.values()].map((s) => `| ${s.label} | ${fr(s.images)} |`).join('\n')}
 
 Chaque aléa est joué avec ses réglages par défaut, depuis la ville intacte, puis
 photographié à son état final. La zone est balayée en quadrillage, sans
@@ -213,7 +215,7 @@ recouvrement ; une case sans bâtiment n'est pas photographiée.
 
 | Rang YOLO | Classe | État | Annotations |
 | --- | --- | --- | --- |
-${DAMAGE_ORDER.map((s, i) => `| ${i} | \`${s}\` | ${DAMAGE_INFO[s].label} | ${counts.get(s)} |`).join('\n')}
+${DAMAGE_ORDER.map((s, i) => `| ${i} | \`${s}\` | ${DAMAGE_INFO[s].label} | ${fr(counts.get(s)!)} |`).join('\n')}
 
 ## Comment les annotations sont calculées
 

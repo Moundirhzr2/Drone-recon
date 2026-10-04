@@ -17,8 +17,8 @@ bâtiment qu'elle montre.
    annotations.
 
 Avec les réglages par défaut, la zone compte 261 cases occupées par au moins un
-bâtiment, soit **1 044 images** pour les quatre aléas, en une vingtaine de
-minutes. À la fin, la ville redevient intacte et le drone revient là où il
+bâtiment, soit **1 044 images** pour les quatre aléas, en un quart d'heure environ sur
+une GTX 1650 de portable. À la fin, la ville redevient intacte et le drone revient là où il
 était.
 
 ## Ce que fait le balayage
