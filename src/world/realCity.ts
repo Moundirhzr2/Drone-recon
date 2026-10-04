@@ -32,8 +32,8 @@ import {
 import type { City } from './city';
 import type { Relief } from './terrain';
 
-/** Bâtiment tel qu'écrit par `scripts/fetch-buildings.mjs`. */
-interface RawBuilding {
+/** Bâtiment tel qu'écrit par `scripts/fetch-buildings.mjs` ou `ignData.ts`. */
+export interface RawBuilding {
   id: string;
   eaves: number | null;
   ridge: number | null;
@@ -45,9 +45,14 @@ interface RawBuilding {
   ground: number | null;
   light: boolean;
   rings: Array<Array<[number, number]>>;
+  /** Champs gardés pour mémoire, sans usage dans le rendu. */
+  use2?: string | null;
+  nature?: string | null;
+  homes?: number | null;
 }
 
-interface RawFile {
+/** Fichier d'une ville : celui de Mulhouse, ou celui qu'écrit `ignData.ts`. */
+export interface CityFile {
   zone: { name?: string; lat: number; lon: number; halfSize: number };
   attribution: string;
   buildings: RawBuilding[];
@@ -259,15 +264,23 @@ function heightOf(raw: RawBuilding): number {
 
 // --- Chargement ----------------------------------------------------------------
 
+/**
+ * Construit la ville, depuis un fichier livré (Mulhouse) ou des données
+ * téléchargées au démarrage (`ignData.ts`).
+ */
 export async function loadRealCity(
   relief: Relief | null,
-  url = 'data/mulhouse-centre.json',
+  source: string | CityFile = 'data/mulhouse-centre.json',
 ): Promise<City | null> {
-  let file: RawFile;
+  let file: CityFile;
   try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    file = (await res.json()) as RawFile;
+    if (typeof source === 'string') {
+      const res = await fetch(source);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      file = (await res.json()) as CityFile;
+    } else {
+      file = source;
+    }
   } catch (err) {
     console.warn('[ville] données IGN indisponibles, ville générée à la place', err);
     return null;
@@ -414,12 +427,14 @@ function imputeYears(buildings: Building[], centers: P[]): void {
 function applyLandmarks(
   buildings: Building[],
   centers: P[],
-  zone: RawFile['zone'],
+  zone: CityFile['zone'],
   cosLat: number,
 ): void {
   for (const lm of LANDMARKS) {
     const east = (lm.lon - zone.lon) * METERS_PER_DEG * cosLat;
     const north = (lm.lat - zone.lat) * METERS_PER_DEG;
+    // Repère d'une autre ville : rien à corriger ici.
+    if (Math.max(Math.abs(east), Math.abs(north)) > zone.halfSize) continue;
     const matches = buildings
       .map((b, i) => ({ b, d: Math.hypot(centers[i][0] - east, centers[i][1] - north) }))
       .filter(

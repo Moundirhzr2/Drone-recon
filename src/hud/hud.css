@@ -1036,7 +1036,8 @@ body {
 #hud-toggle .slash {
   display: none;
 }
-body.hud-hidden :is(#overlay-main, .panel, #keymap, #gpu-warning, #demo-caption, #quality-toggle) {
+body.hud-hidden
+  :is(#overlay-main, .panel, #keymap, #gpu-warning, #demo-caption, #quality-toggle, #place-toggle) {
   visibility: hidden;
 }
 /* Seul reste le bouton, discret tant qu'on ne le survole pas. */
@@ -1072,6 +1073,93 @@ body.hud-hidden #hud-toggle .slash {
 #quality-toggle[data-state='fixed'] {
   background: rgba(0, 229, 255, 0.16);
   border-color: var(--accent);
+}
+
+/* ---------- Lieu du vol (à droite du bouton HD) ---------- */
+#place-toggle {
+  position: absolute;
+  top: 12px;
+  /* À droite de HD : 324 + 30 px, plus 6 px d'écart. */
+  left: 360px;
+  z-index: 60;
+  max-width: 260px;
+  height: 30px;
+  padding: 0 10px;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  cursor: pointer;
+}
+#place-toggle:hover,
+#place-toggle.on {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+#place-panel {
+  top: 48px;
+  left: 288px;
+  z-index: 61;
+  width: 340px;
+  padding: 8px;
+}
+#place-panel[hidden] {
+  display: none;
+}
+#place-query {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--edge-soft);
+}
+#place-query:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+#place-results {
+  display: grid;
+  gap: 2px;
+  max-height: 220px;
+  margin-top: 6px;
+  overflow-y: auto;
+}
+.place-result {
+  padding: 5px 6px;
+  font: inherit;
+  font-size: 10.5px;
+  text-align: left;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.place-result:hover {
+  border-color: var(--accent);
+}
+.place-empty.err {
+  color: var(--bad);
+}
+.place-empty,
+.place-note {
+  margin: 6px 0 0;
+  font-size: 9.5px;
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+#place-home {
+  width: 100%;
+  margin-top: 6px;
 }
 
 /* ---------- Ville photoréaliste : sources à l'écran ---------- */

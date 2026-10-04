@@ -177,6 +177,22 @@
     <!-- Qualite d'image : la retablir et la fixer -->
     <button id="quality-toggle" type="button">HD</button>
 
+    <!-- Lieu du vol : voir src/hud/placePicker.ts -->
+    <button id="place-toggle" type="button">Mulhouse — centre</button>
+    <section id="place-panel" class="panel" hidden>
+      <input
+        id="place-query"
+        type="text"
+        maxlength="120"
+        autocomplete="off"
+        placeholder="Ville, adresse, ou « 48.58, 7.75 »"
+        aria-label="Lieu du vol"
+      />
+      <div id="place-results"></div>
+      <p id="place-note" class="place-note"></p>
+      <button id="place-home" class="dis-btn" type="button" hidden>Revenir à Mulhouse</button>
+    </section>
+
     <!-- Flash de prise de vue -->
     <div id="shutter"></div>
 

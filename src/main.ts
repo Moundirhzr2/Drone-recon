@@ -23,6 +23,9 @@ import { createQuality, QUALITY_LABEL } from './world/quality';
 import { generateCity } from './world/city';
 import { loadRealCity } from './world/realCity';
 import { loadRelief } from './world/terrain';
+import { fetchCityData, type CityData } from './world/ignData';
+import { isMulhouse, MULHOUSE, placeFromUrl, searchPlaces, type Place } from './world/place';
+import { PlacePicker } from './hud/placePicker';
 import { BuildingRenderer, RENDER_LABEL, type RenderMode } from './world/render';
 import { PhotorealCity, wantsPhotoreal } from './world/photoreal';
 import { Drone } from './drone/drone';
@@ -68,14 +71,53 @@ import {
 
 const RENDER_CYCLE: RenderMode[] = ['realiste', 'wireframe', 'scan'];
 
+/**
+ * Le lieu du vol (`world/place.ts`) : Mulhouse, livrée toute prête, ou le lieu
+ * demandé dans l'adresse, téléchargé depuis l'IGN. Si le lieu est introuvable
+ * ou hors de France, on retombe sur Mulhouse, et on garde la raison pour la
+ * dire au pilote.
+ */
+async function resolvePlace(): Promise<{
+  place: Place;
+  data: CityData | null;
+  failure: string | null;
+}> {
+  const wanted = placeFromUrl();
+  if (!wanted) return { place: MULHOUSE, data: null, failure: null };
+  try {
+    let place: Place;
+    if ('query' in wanted) {
+      boot.set(`Recherche de « ${wanted.query} »…`, 0.04);
+      const [first] = await searchPlaces(wanted.query);
+      if (!first) throw new Error(`lieu introuvable : « ${wanted.query} »`);
+      place = first;
+    } else {
+      place = wanted;
+    }
+    if (isMulhouse(place)) return { place: MULHOUSE, data: null, failure: null };
+    const data = await fetchCityData(place, (text) => boot.set(text, 0.06));
+    return { place, data, failure: null };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    const asked = 'query' in wanted ? wanted.query : wanted.name;
+    console.warn(`[lieu] ${asked} : ${reason} ; retour à Mulhouse`);
+    return { place: MULHOUSE, data: null, failure: `${asked} : ${reason}` };
+  }
+}
+
 async function main(): Promise<void> {
   buildKeymap();
   boot.set('Initialisation…', 0.05);
 
+  // --- Lieu du vol ----------------------------------------------------------
+  const { place, data: placeData, failure: placeFailure } = await resolvePlace();
+  // Le départ du drone et la ville de secours se règlent sur CONFIG.city.
+  Object.assign(CONFIG.city, { name: place.name, lon: place.lon, lat: place.lat });
+
   // --- Monde -------------------------------------------------------------
   // Le relief d'abord : la scène en a besoin pour construire son terrain.
   boot.set('Chargement du relief…', 0.08);
-  const relief = await loadRelief();
+  const relief = await loadRelief(placeData?.relief);
   const { viewer, scene, backendLabel, gpu } = await createWorld('cesium', boot.set, relief);
   // Qualité d'image choisie d'après la carte graphique, puis tenue en vol.
   const quality = createQuality(viewer, gpu);
@@ -83,7 +125,7 @@ async function main(): Promise<void> {
   // Les vrais bâtiments de l'IGN ; la ville générée ne sert plus que de secours
   // si les données ne sont pas là.
   boot.set('Chargement des bâtiments réels…', 0.6);
-  const city = (await loadRealCity(relief)) ?? generateCity();
+  const city = (await loadRealCity(relief, placeData?.city)) ?? generateCity();
 
   const renderer = new BuildingRenderer(scene, city);
   renderer.build();
@@ -528,9 +570,36 @@ async function main(): Promise<void> {
   camera.snap();
   viewer.resize();
   viewer.render();
-  boot.set(`Prêt — ${worldLabel} — qualité ${QUALITY_LABEL[quality.profile]}`, 1);
+  boot.set(`Prêt — ${place.name} — ${worldLabel} — qualité ${QUALITY_LABEL[quality.profile]}`, 1);
   setTimeout(() => boot.hide(), 450);
   handsPanel.setMessage('Prêt au décollage — H pour piloter aux mains', 'ok');
+
+  // --- Choix du lieu : voir `hud/placePicker.ts` ----------------------------
+  const picker = new PlacePicker(place);
+  if (placeFailure) {
+    picker.showError(`${placeFailure}. Retour à Mulhouse.`);
+    handsPanel.setMessage('Lieu indisponible : retour à Mulhouse', 'err');
+    // Recharger la page ne doit pas retenter le même lieu.
+    const params = new URLSearchParams(window.location.search);
+    for (const key of ['lieu', 'lat', 'lon']) params.delete(key);
+    const search = params.toString();
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${search ? `?${search}` : ''}`,
+    );
+  }
+  // Hors de Mulhouse, l'écart d'altitude entre Google et l'IGN se mesure.
+  if (photoreal && !isMulhouse(place)) {
+    void photoreal.calibrate().then(
+      (gap) => {
+        if (gap === null) return;
+        const m = gap.toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+        handsPanel.setMessage(`Relevé de Google calé sur le relief : ${m} m d’écart`, 'ok');
+      },
+      (err) => console.warn('[relevé] calage impossible', err),
+    );
+  }
   // Affiché ici et pas pendant la création de la scène : c'est seulement
   // maintenant que l'interface existe pour le montrer.
   if (gpu.software) showSoftwareRenderingWarning(gpu.renderer);

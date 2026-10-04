@@ -139,6 +139,16 @@ export class DatasetCampaign {
    * l'utilisateur : le navigateur n'ouvre le choix du dossier qu'à ce prix.
    */
   toggle(mode: CampaignMode = 'grille'): void {
+    // Hors de France, la photographie aérienne vient d'Esri : comme pour le
+    // relevé de Google, ses conditions ne permettent pas d'en tirer un jeu
+    // d'images. Les données de l'IGN, elles, sont ouvertes.
+    if (!this.running && !this.hooks.city.attribution?.includes('IGN')) {
+      this.hooks.report(
+        'Jeu de données : réservé aux villes françaises, dont la photographie aérienne (IGN) est ouverte',
+        'err',
+      );
+      return;
+    }
     if (this.running) {
       this.stopRequested = true;
       this.hooks.report('Jeu de données : arrêt demandé, fin de l’image en cours…');

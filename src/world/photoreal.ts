@@ -159,6 +159,34 @@ const UNDERLAY = Cesium.Color.fromCssColorString('#57514a');
 type GroundAt = (lon: number, lat: number) => number;
 
 /**
+ * Calage du relevé sur le relief (`calibrate()`) : points de sol dégagés pris
+ * sur une grille de 20 m, jusqu'à 250 m du centre, à 6 m au moins de tout
+ * bâtiment ; 60 au plus, et 12 au moins dans le groupe du sol pour conclure.
+ */
+const CALIBRATION_POINTS = 60;
+const CALIBRATION_MIN = 12;
+const CALIBRATION_STEP = 20;
+const CALIBRATION_REACH = 250;
+const CALIBRATION_CLEARANCE = 6;
+/** Largeur de la fenêtre qui cherche le groupe de points du sol, en mètres. */
+const CALIBRATION_WINDOW = 2;
+
+/**
+ * Abaisse le relevé de la hauteur du géoïde, le long de la verticale du
+ * centre-ville : ses hauteurs au-dessus de l'ellipsoïde rejoignent les
+ * altitudes de l'IGN.
+ */
+function lower(tileset: Cesium.Cesium3DTileset, city: City, offset: number): void {
+  const up = Cesium.Ellipsoid.WGS84.geodeticSurfaceNormal(
+    Cesium.Cartesian3.fromDegrees(city.center.lon, city.center.lat),
+    new Cesium.Cartesian3(),
+  );
+  tileset.modelMatrix = Cesium.Matrix4.fromTranslation(
+    Cesium.Cartesian3.multiplyByScalar(up, -offset, up),
+  );
+}
+
+/**
  * Pour chaque pixel du relevé : sa position dans le repère local du
  * centre-ville, puis ce que la carte des ruines dit de cet endroit.
  */
@@ -265,6 +293,8 @@ export class PhotorealCity {
   /** Bâtiments par case de 50 m, pour trouver vite les voisins d'une ruine. */
   private grid = new Map<string, Building[]>();
   private visible = true;
+  /** Abaissement appliqué au relevé, en mètres : voir `calibrate()`. */
+  private offset = CONFIG.photoreal.geoidOffset;
 
   private constructor(
     private scene: Cesium.Scene,
@@ -377,13 +407,7 @@ export class PhotorealCity {
           showCreditsOnScreen: true,
         },
       );
-      const up = Cesium.Ellipsoid.WGS84.geodeticSurfaceNormal(
-        Cesium.Cartesian3.fromDegrees(city.center.lon, city.center.lat),
-        new Cesium.Cartesian3(),
-      );
-      tileset.modelMatrix = Cesium.Matrix4.fromTranslation(
-        Cesium.Cartesian3.multiplyByScalar(up, -CONFIG.photoreal.geoidOffset, up),
-      );
+      lower(tileset, city, CONFIG.photoreal.geoidOffset);
       scene.primitives.add(tileset);
       return new PhotorealCity(scene, city, groundAt, tileset);
     } catch (err) {
@@ -495,6 +519,79 @@ export class PhotorealCity {
     this.floors = this.nextFloors;
     this.nextFloors = null;
     if (this.floors) this.floors.show = this.visible;
+  }
+
+  /**
+   * Cale le relevé de Google sur le relief du simulateur — celui de l'IGN en
+   * France, les tuiles Terrarium ailleurs —, pour une autre ville que Mulhouse.
+   *
+   * L'IGN donne des altitudes au-dessus du géoïde, Google des hauteurs
+   * au-dessus de l'ellipsoïde : l'écart, la hauteur du géoïde, vaut 48,2 m à
+   * Mulhouse (CONFIG.photoreal.geoidOffset) mais change de plusieurs mètres
+   * d'une ville de France à l'autre. On le mesure comme il l'avait été à
+   * Mulhouse : la hauteur du relevé en des points dégagés — rues, places —,
+   * comparée au relief. Ce qui compte est que le relevé se pose sur CE relief,
+   * celui des ruines dessinées : hors de France, l'écart mesuré mêle donc la
+   * hauteur du géoïde et le biais du relief mondial (31,2 m à Berlin).
+   *
+   * Un arbre, une voiture ou un toit débordant ne peuvent que REHAUSSER un
+   * point. À Mulhouse, 35 points sur 60 se serrent entre 47,8 et 49,7 m, les
+   * autres s'étalent jusqu'à 80 m : la médiane de l'ensemble (48,7 m) en est
+   * tirée vers le haut. On retient donc le groupe le plus dense — la fenêtre
+   * de 2 m qui contient le plus de points — et sa médiane : 48,3 m, pour
+   * 48,2 m mesurés à la main.
+   * @returns l'écart retenu, en mètres, ou `null` si la mesure n'a pas abouti.
+   */
+  async calibrate(): Promise<number | null> {
+    const points = this.openGround(CALIBRATION_POINTS);
+    if (points.length < CALIBRATION_MIN) return null;
+    const positions = points.map((p) => Cesium.Cartographic.fromDegrees(p.lon, p.lat));
+    // Seul le relevé compte : la nappe et les sols dessinés sont sous lui,
+    // mais à une hauteur qu'on ne connaît pas encore.
+    const exclude = [this.underlay, this.floors].filter((x): x is Cesium.Primitive => !!x);
+    const sampled = await this.scene.sampleHeightMostDetailed(positions, exclude);
+    const gaps: number[] = [];
+    sampled.forEach((c, i) => {
+      // Le relevé est déjà abaissé de l'écart courant : on le rajoute.
+      if (c && Number.isFinite(c.height)) gaps.push(c.height + this.offset - points[i].ground);
+    });
+    gaps.sort((a, b) => a - b);
+    let best = { from: 0, count: 0 };
+    for (let i = 0, j = 0; i < gaps.length; i++) {
+      while (gaps[i] - gaps[j] > CALIBRATION_WINDOW) j++;
+      if (i - j + 1 > best.count) best = { from: j, count: i - j + 1 };
+    }
+    if (best.count < CALIBRATION_MIN) return null;
+    const gap = gaps[best.from + (best.count >> 1)];
+    this.offset = gap;
+    lower(this.tileset, this.city, gap);
+    return gap;
+  }
+
+  /**
+   * Points de sol dégagés autour du centre : sur une grille, ceux qui sont à
+   * plus de quelques mètres de tout bâtiment, les plus proches du centre
+   * d'abord.
+   */
+  private openGround(count: number): Array<{ lon: number; lat: number; ground: number }> {
+    const { center } = this.city;
+    const mLon = 111320 * Math.cos((center.lat * Math.PI) / 180);
+    const shapes = this.city.buildings.map((b) => {
+      const cx = (b.lon - center.lon) * mLon;
+      const cy = (b.lat - center.lat) * 111320;
+      return { cx, cy, r: Math.hypot(b.width, b.depth) / 2 + CALIBRATION_CLEARANCE };
+    });
+    const out: Array<{ lon: number; lat: number; ground: number; d: number }> = [];
+    for (let y = -CALIBRATION_REACH; y <= CALIBRATION_REACH; y += CALIBRATION_STEP) {
+      for (let x = -CALIBRATION_REACH; x <= CALIBRATION_REACH; x += CALIBRATION_STEP) {
+        // Prudent : le cercle qui contient chaque bâtiment, marge comprise.
+        if (shapes.some((s) => Math.hypot(x - s.cx, y - s.cy) < s.r)) continue;
+        const lon = center.lon + x / mLon;
+        const lat = center.lat + y / 111320;
+        out.push({ lon, lat, ground: this.groundAt(lon, lat), d: Math.hypot(x, y) });
+      }
+    }
+    return out.sort((a, b) => a.d - b.d).slice(0, count);
   }
 
   /** Le relevé est-il affiché ? Les captures doivent alors le citer. */

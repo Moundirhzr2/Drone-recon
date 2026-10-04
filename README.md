@@ -56,6 +56,10 @@ travaux peut s'y substituer sans toucher au reste.
   dessinées d'après l'époque, l'usage et la couverture que déclare l'IGN —
   volets, balcons, vitrines, tuiles, ardoises, terrasses — ; rendus réaliste,
   fil de fer et scan.
+- **N'importe quelle ville** — le bouton du lieu cherche une ville ou une
+  adresse ; bâtiments et relief se téléchargent au démarrage, depuis l'IGN en
+  France et depuis OpenStreetMap et des tuiles d'altitude mondiales ailleurs, et
+  le relevé photoréaliste se cale de lui-même sur le relief.
 - **Ville photoréaliste**, avec un jeton Cesium ion gratuit — le relevé 3D de
   Google, celui de Google Earth, posé sur le relief de l'IGN. Les bâtiments
   effondrés y sont effacés et remplacés par leur ruine — tas de gravats, pans de
@@ -117,6 +121,13 @@ Pour la ville photoréaliste : créer un compte gratuit sur
 à ses ressources depuis l'Asset Depot, puis copier le jeton dans un fichier
 `.env.local` à la racine (voir `.env.example`). Git ignore ce fichier. Pour
 revenir à la ville dessinée, ajouter `?ville=dessinee` à l'adresse.
+
+Pour voler ailleurs qu'à Mulhouse : le bouton du lieu, en haut à gauche,
+cherche une ville, une adresse, ou des coordonnées. Le simulateur se recharge sur
+ce lieu et télécharge lui-même ses bâtiments et son relief : depuis l'IGN en
+France, depuis OpenStreetMap ailleurs (voir
+[une autre ville](docs/donnees.md#une-autre-ville)). L'adresse de la page le
+retient : `?lieu=Berlin`.
 
 Le profil de qualité est choisi d'après la carte graphique. Pour l'imposer,
 ajouter `?qualite=fluide`, `?qualite=equilibre` ou `?qualite=beau` à l'adresse.

@@ -21,8 +21,8 @@
 
 import * as Cesium from 'cesium';
 
-/** Grille telle qu'écrite par `scripts/fetch-relief.mjs`. */
-interface ReliefFile {
+/** Grille telle qu'écrite par `scripts/fetch-relief.mjs` ou `ignData.ts`. */
+export interface ReliefFile {
   zone: { lat: number; lon: number; halfSize: number };
   spacing: number;
   size: number;
@@ -111,9 +111,13 @@ export class Relief {
 }
 
 /** Charge la grille de relief livrée avec l'application. */
-export async function loadRelief(url = 'data/mulhouse-relief.json'): Promise<Relief | null> {
+/** Relief d'un fichier livré (Mulhouse) ou de données téléchargées au démarrage. */
+export async function loadRelief(
+  source: string | ReliefFile = 'data/mulhouse-relief.json',
+): Promise<Relief | null> {
   try {
-    const res = await fetch(url);
+    if (typeof source !== 'string') return new Relief(source);
+    const res = await fetch(source);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return new Relief((await res.json()) as ReliefFile);
   } catch (err) {
