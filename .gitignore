@@ -5,6 +5,14 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Entraînement du détecteur : environnement Python, jeux de données, résultats
+ml/.venv/
+ml/datasets/
+ml/runs/
+__pycache__/
+*.pt
+*.onnx
+
 # Variables d'environnement — .env.example est versionné, les vraies clés non
 .env
 .env.*

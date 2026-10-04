@@ -6,7 +6,7 @@ import prettier from 'eslint-config-prettier';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'public/**', 'src/vite-env.d.ts'],
+    ignores: ['dist/**', 'node_modules/**', 'public/**', 'ml/**', 'src/vite-env.d.ts'],
   },
 
   js.configs.recommended,

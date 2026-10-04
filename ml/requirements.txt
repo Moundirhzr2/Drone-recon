@@ -1,0 +1,5 @@
+# Entraînement du détecteur. PyTorch s'installe à part, avec CUDA :
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+ultralytics>=8.4
+onnx
+onnxslim
