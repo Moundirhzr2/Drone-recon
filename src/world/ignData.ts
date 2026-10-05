@@ -92,22 +92,22 @@ export async function fetchCityData(
   const cache = await openCache();
   const hit = await cache?.match(key);
   if (hit) {
-    progress(`${place.name} : données reprises du cache`);
+    progress(`${place.name}: data from the cache`);
     return (await hit.json()) as CityData;
   }
 
-  progress(`${place.name} : relief (IGN, RGE ALTI®)…`);
+  progress(`${place.name}: relief (IGN, RGE ALTI®)…`);
   let data: CityData;
   const ign = await fetchRelief(place).catch(() => null);
   if (ign) {
     const city = await fetchBuildings(place, (n, total) =>
-      progress(`${place.name} : bâtiments (IGN, BD TOPO®) ${n} / ${total}…`),
+      progress(`${place.name}: buildings (IGN, BD TOPO®) ${n} / ${total}…`),
     );
     data = { city, relief: ign };
   } else {
-    progress(`${place.name} : relief mondial (Terrarium)…`);
+    progress(`${place.name}: world relief (Terrarium)…`);
     const relief = await fetchWorldRelief(place);
-    const city = await fetchOsmBuildings(place, (text) => progress(`${place.name} : ${text}`));
+    const city = await fetchOsmBuildings(place, (text) => progress(`${place.name}: ${text}`));
     data = { city, relief };
   }
   await cache?.put(
@@ -152,9 +152,9 @@ async function fetchRelief(place: Place): Promise<ReliefFile | null> {
     FORMAT: 'image/x-bil;bits=32',
   });
   const res = await fetch(`${WMS}?${params}`);
-  if (!res.ok) throw new Error(`relief indisponible (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(`relief unavailable (HTTP ${res.status})`);
   const raw = new Float32Array(await res.arrayBuffer());
-  if (raw.length !== size * size) throw new Error('relief incomplet');
+  if (raw.length !== size * size) throw new Error('incomplete relief');
 
   // Hors couverture, le service rend -99999. Quelques trous sont remplacés par
   // la médiane, comme dans le script ; au-delà, le lieu n'est pas en France.
@@ -207,14 +207,13 @@ async function fetchBuildings(
       STARTINDEX: String(start),
     });
     const res = await fetch(`${WFS}?${params}`);
-    if (!res.ok) throw new Error(`bâtiments indisponibles (HTTP ${res.status})`);
+    if (!res.ok) throw new Error(`buildings unavailable (HTTP ${res.status})`);
     const page = (await res.json()) as { features: WfsFeature[]; numberMatched?: number };
     features.push(...page.features);
     progress(features.length, Number(page.numberMatched ?? features.length));
     if (page.features.length < PAGE) break;
   }
-  if (!features.length)
-    throw new Error('aucun bâtiment de l’IGN ici : choisir un lieu bâti, en France');
+  if (!features.length) throw new Error('no IGN building here: choose a built-up place in France');
 
   const toLocal = ([lon, lat]: number[]): Point => [
     Math.round((lon - place.lon) * METERS_PER_DEG * cosLat * 10) / 10,

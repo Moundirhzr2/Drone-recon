@@ -35,6 +35,13 @@ export interface MaskJob {
   /** Contours à noircir. */
   burnt: Float64Array[];
   /**
+   * Bâtiments fissurés, pour la seconde carte (`damage`) : leur contour, leur
+   * gravité et l'altitude de leur pied, codées de 0 à 255.
+   */
+  cracked: Array<{ ring: Float64Array; severity: number; base: number }>;
+  /** Définition de la seconde carte, plus grossière : elle ne dit que des emprises. */
+  damageSize: { width: number; height: number };
+  /**
    * Poussière autour des ruines : étalement du flou, en pixels (écart type),
    * et gain appliqué au résultat, pour qu'elle soit pleine au bord de
    * l'effacement.
@@ -46,6 +53,8 @@ export interface MaskResult {
   id: number;
   /** Pixels RGBA, lignes du sud au nord. */
   pixels: ArrayBuffer;
+  /** Seconde carte : bâtiments fissurés (rouge), gravité (vert), pied (bleu). */
+  damage: ArrayBuffer;
 }
 
 const scope = self as unknown as {
@@ -138,5 +147,26 @@ scope.onmessage = (event) => {
   // Tableau borné : le gain sature à 255.
   for (let i = 3; i < pixels.length; i += 4) pixels[i] = spread[i - 3] * job.dust.gain;
 
-  scope.postMessage({ id: job.id, pixels: pixels.buffer }, [pixels.buffer]);
+  // Seconde carte : les bâtiments fissurés, à moindre définition.
+  const dw = job.damageSize.width;
+  const dh = job.damageSize.height;
+  const cracks = surface(3, dw, dh);
+  const dsx = dw / ew;
+  const dsy = dh / eh;
+  for (const c of job.cracked) {
+    cracks.fillStyle = `rgb(255, ${c.severity}, ${c.base})`;
+    cracks.beginPath();
+    cracks.moveTo((c.ring[0] - ox) * dsx, (c.ring[1] - oy) * dsy);
+    for (let i = 2; i < c.ring.length; i += 2) {
+      cracks.lineTo((c.ring[i] - ox) * dsx, (c.ring[i + 1] - oy) * dsy);
+    }
+    cracks.closePath();
+    cracks.fill();
+  }
+  const damage = cracks.getImageData(0, 0, dw, dh).data;
+
+  scope.postMessage({ id: job.id, pixels: pixels.buffer, damage: damage.buffer }, [
+    pixels.buffer,
+    damage.buffer,
+  ]);
 };

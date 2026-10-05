@@ -69,7 +69,7 @@ export async function searchPlaces(query: string): Promise<Found[]> {
   if (coords) {
     const { lat, lon } = coords;
     const name = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-    return [{ name, label: `Coordonnées ${name}`, lat, lon }];
+    return [{ name, label: `Coordinates ${name}`, lat, lon }];
   }
   if (q.length < 2) return [];
   if (searchesWithGoogle()) return searchGoogle(q);
@@ -104,7 +104,7 @@ function parseCoordinates(q: string): { lat: number; lon: number } | null {
 async function searchPhoton(q: string): Promise<Found[]> {
   const params = new URLSearchParams({ q, limit: '6', lang: 'fr' });
   const res = await fetch(`https://photon.komoot.io/api/?${params}`);
-  if (!res.ok) throw new Error(`recherche mondiale indisponible (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(`world search unavailable (HTTP ${res.status})`);
   const data = (await res.json()) as {
     features: Array<{
       geometry: { coordinates: [number, number] };
@@ -146,7 +146,7 @@ interface IgnFound extends Found {
 async function searchIgn(q: string): Promise<IgnFound[]> {
   const params = new URLSearchParams({ q, limit: '6', autocomplete: '1' });
   const res = await fetch(`https://data.geopf.fr/geocodage/search?${params}`);
-  if (!res.ok) throw new Error(`recherche indisponible (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(`search unavailable (HTTP ${res.status})`);
   const data = (await res.json()) as {
     features: Array<{
       geometry: { coordinates: [number, number] };
@@ -179,7 +179,7 @@ async function searchGoogle(q: string): Promise<Found[]> {
     access_token: CONFIG.ionToken,
   });
   const res = await fetch(`https://api.cesium.com/v1/geocode/search?${params}`);
-  if (!res.ok) throw new Error(`recherche indisponible (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(`search unavailable (HTTP ${res.status})`);
   const data = (await res.json()) as {
     features: Array<{
       geometry?: { coordinates: [number, number] };

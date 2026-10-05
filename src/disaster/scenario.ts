@@ -61,12 +61,12 @@ export interface DisasterMeta {
 
 export const DISASTERS: Record<DisasterKind, DisasterMeta> = {
   seisme: {
-    label: 'Séisme',
-    unit: 'Intensité EMS-98',
+    label: 'Earthquake',
+    unit: 'EMS-98 intensity',
     min: 5,
     max: 10,
     step: 0.5,
-    blurb: 'Toute la ville encaisse, le bâti ancien cède en premier. Référence : Bâle, 1356.',
+    blurb: 'The whole city shakes; old masonry gives way first. Reference: Basel, 1356.',
   },
   explosion: {
     label: 'Explosion',
@@ -74,26 +74,26 @@ export const DISASTERS: Record<DisasterKind, DisasterMeta> = {
     min: 0.5,
     max: 20,
     step: 0.5,
-    blurb: 'Rayon net et brutal. Doubler la charge ne l’élargit que de 26 % (loi en W^1/3).',
+    blurb: 'A sharp, brutal radius. Doubling the charge widens it by only 26% (W^1/3 law).',
   },
   inondation: {
-    label: 'Inondation',
-    unit: 'Crue (m)',
+    label: 'Flood',
+    unit: 'Water depth (m)',
     min: 0.5,
     max: 6,
     // Le vieux centre est si plat qu'un quart de mètre fait passer de 5 % à
     // 19 % de bâtiments les pieds dans l'eau : un pas plus grossier sauterait
     // les situations intermédiaires.
     step: 0.25,
-    blurb: 'L’eau monte à niveau plat et remplit d’abord les creux du relief réel.',
+    blurb: 'The water rises level and fills the hollows of the real relief first.',
   },
   incendie: {
-    label: 'Incendie',
-    unit: 'Vigueur',
+    label: 'Fire',
+    unit: 'Strength',
     min: 0.5,
     max: 2,
     step: 0.1,
-    blurb: 'Propagation de proche en proche, étirée par le vent.',
+    blurb: 'Spreads from building to building, stretched by the wind.',
   },
 };
 

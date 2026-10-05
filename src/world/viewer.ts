@@ -48,7 +48,7 @@ export async function createWorld(
   onProgress: (msg: string, pct: number) => void,
   relief: Relief | null = null,
 ): Promise<World> {
-  onProgress('Initialisation du moteur 3D…', 0.1);
+  onProgress('Starting the 3D engine…', 0.1);
 
   if (CONFIG.ionToken) {
     Cesium.Ion.defaultAccessToken = CONFIG.ionToken;
@@ -138,18 +138,18 @@ export async function createWorld(
 
   scene.light = new Cesium.DirectionalLight({ direction: sunDirection(215, 40), intensity: 2.1 });
 
-  let backendLabel = 'Hors-ligne (imagerie satellite)';
+  let backendLabel = 'Offline (satellite imagery)';
 
   // --- Fond de scène ----------------------------------------------------
   try {
-    onProgress('Chargement de l’imagerie satellite…', 0.35);
+    onProgress('Loading satellite imagery…', 0.35);
     await addOsmImagery(viewer);
   } catch (err) {
     console.warn('[viewer] imagerie indisponible', err);
-    backendLabel = 'Hors-ligne (repli)';
+    backendLabel = 'Offline (fallback)';
   }
 
-  onProgress('Scène prête', 0.5);
+  onProgress('Scene ready', 0.5);
 
   const gpu = reportGpu(scene);
 

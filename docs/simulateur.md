@@ -276,9 +276,41 @@ se produisent l'un après l'autre en deux secondes. Avec un aléa, ils
 s'ajoutent à lui : on peut jouer une explosion, puis effondrer à la main un
 bâtiment qu'elle avait épargné.
 
-Un fissuré reste dessiné comme un bâtiment intact : une fissure ne se voit pas
-du ciel à cette échelle. C'est aussi ce qui le rend invisible au détecteur
-entraîné (voir [détecteur entraîné](detecteur-entraine.md)).
+Un bâtiment fissuré reste debout, mais ses dégâts se voient, d'autant plus que
+le dommage est grave. Ils sont peints par le shader des façades
+(`world/facade.ts`), sans géométrie de plus : un séisme en fissure près d'un
+millier, et ils ne coûtent rien de plus à dessiner.
+
+- **Les toits**, ce qu'on voit du drone : des plaques de tuiles glissées ou
+  cassées, et quelques trous où l'on voit le voligeage ; des gravats épars sur
+  une terrasse.
+- **Les façades**, ce qu'on voit en volant bas : des fissures fines en X dans
+  les travées, la signature du cisaillement d'un séisme sur la maçonnerie,
+  brisées le long des joints ; parfois une fissure au niveau d'un plancher ;
+  des plaques d'enduit tombées, qui laissent voir la pierre ou la brique ; de
+  la poussière au pied du mur.
+
+Dans la ville photoréaliste, ces mêmes dégâts sont peints sur le relevé de
+Google, d'après une seconde carte que dessine le worker des ruines : l'emprise de
+chaque bâtiment fissuré, sa gravité et l'altitude de son pied.
+
+Un bâtiment abîmé par une crue ne se fissure pas : sa façade s'imbibe jusqu'à la
+hauteur atteinte par l'eau, avec une laisse de limon à cette hauteur et des
+coulures plus bas. Le rendu sait quel aléa est en cours (`setHazard`).
+
+**L'eau d'une crue** ne se montre que là où le sol est sous l'eau : la nappe lit
+le relief de l'IGN dans une petite carte (4,7 m par pixel) et en tire en chaque
+point la profondeur. Au bord, l'eau est claire et limoneuse, s'amincit jusqu'à
+disparaître, avec une frange d'écume ; au large, elle devient opaque. Deux
+trains de vagues, des traînées de turbidité, le reflet du ciel en vue rasante.
+Sur la ville photoréaliste, calée sur le relief au mètre près seulement, la
+surface est dessinée 80 cm plus haut : sans cela, le relevé cachait des rues
+entières sous quelques dizaines de centimètres d'eau.
+
+Ces détails s'estompent quand ils deviennent plus fins qu'un pixel, au lieu de
+scintiller. Le détecteur entraîné les ignore : il a appris avant qu'ils soient
+dessinés (voir [détecteur entraîné](detecteur-entraine.md)). Dans la ville
+photoréaliste, elles sont peintes sur le relevé de Google (voir plus haut).
 
 ## Scénarios en JSON
 

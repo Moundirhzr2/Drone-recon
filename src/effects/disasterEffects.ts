@@ -33,7 +33,7 @@ import { floodBottom, type DisasterPlayer, type Timeline } from '../disaster/tim
 /** Émetteurs de feu actifs au plus. */
 const MAX_FIRES = 14;
 /** Nuages de poussière simultanés au plus. */
-const MAX_DUST = 8;
+const MAX_DUST = 14;
 /**
  * Systèmes de particules créés au plus par image. Chaque création coûte :
  * Cesium y bâtit une collection de billboards et son atlas de textures.
@@ -239,58 +239,106 @@ function shockDome(): Cesium.EllipsoidGeometry {
 // Eau de crue
 // ---------------------------------------------------------------------------
 
+/** Côté de la nappe d'eau et de la carte du relief qui la découpe, en mètres. */
+const FLOOD_HALF = 600;
+/** Surélévation de la surface sur la ville photoréaliste, en mètres. */
+const FLOOD_LIFT = 0.8;
+/** Définition de cette carte : 4,7 m par pixel, plus fin que le relief (10 m). */
+const FLOOD_MAP = 256;
+/** Pas de codage du relief dans la carte : 4 cm par niveau, 10 m de haut en tout. */
+const FLOOD_STEP = 0.04;
+
 /**
  * Matériau de l'eau de crue.
  *
- * Il reprend les vagues animées du matériau « Water » de Cesium (même carte de
- * normales, même bruit), et y ajoute ce qui manquait pour qu'une nappe se lise
- * comme de l'EAU vue de biais : le reflet du ciel, qui croît à mesure que le
- * regard devient rasant (approximation de Schlick du facteur de Fresnel). Vue
- * d'en haut, la crue est boueuse ; vers l'horizon, elle devient un miroir
- * pâle. Sans ce reflet, une crue brune se confondait avec un terrain vague.
+ * La nappe est plane, mais elle ne se montre que là où le sol est sous l'eau :
+ * elle lit le relief de l'IGN dans une petite carte (`reliefMap`), et en tire
+ * en chaque point la profondeur. C'est elle, et non le seul test de
+ * profondeur, qui découpe la crue : sur la ville photoréaliste, le relevé de
+ * Google n'est calé sur le relief qu'au mètre près, et cachait des rues
+ * entières sous quelques dizaines de centimètres d'eau.
+ *
+ * La profondeur règle tout le reste :
+ *  - la teinte : au bord, on voit le fond, une eau claire et limoneuse ; au
+ *    large, elle devient opaque et sombre ;
+ *  - la rive : l'eau s'y amincit jusqu'à disparaître, avec une frange
+ *    d'écume qui bat au rythme des vagues ;
+ *  - l'opacité, qui croît avec elle.
+ * Par-dessus : deux trains de vagues croisés, le reflet du ciel qui croît à
+ * mesure que le regard devient rasant (Fresnel, approximation de Schlick), et
+ * les éclats du soleil sur les crêtes.
  */
-function floodWaterMaterial(): Cesium.Material {
-  return new Cesium.Material({
+function floodWaterMaterial(reliefMap: HTMLCanvasElement): Cesium.Material {
+  const material = new Cesium.Material({
     translucent: true,
     fabric: {
       type: 'EauDeCrue',
       uniforms: {
         normalMap: Cesium.buildModuleUrl('Assets/Textures/waterNormals.jpg'),
-        mudColor: new Cesium.Color(0.35, 0.31, 0.22, 0.9),
-        skyColor: new Cesium.Color(0.6, 0.67, 0.74, 1),
-        frequency: 300.0,
-        animationSpeed: 0.012,
-        // Vagues douces : plus fortes, les reflets tournaient en plaques
-        // claires qu'on prenait pour de la neige.
-        amplitude: 2.5,
-        specularIntensity: 0.7,
+        reliefMap: Cesium.Material.DefaultImageId,
+        // Hauteur de l'eau au-dessus du pied de bâtiment le plus bas, en mètres.
+        level: 0,
+        stepMeters: FLOOD_STEP,
+        shallowColor: new Cesium.Color(0.64, 0.55, 0.39, 1),
+        deepColor: new Cesium.Color(0.42, 0.35, 0.23, 1),
+        skyColor: new Cesium.Color(0.72, 0.78, 0.84, 1),
+        foamColor: new Cesium.Color(0.86, 0.84, 0.78, 1),
+        frequency: 420.0,
+        animationSpeed: 0.01,
+        amplitude: 3.0,
       },
       source: `
         czm_material czm_getMaterial(czm_materialInput materialInput)
         {
           czm_material material = czm_getDefaultMaterial(materialInput);
+          vec2 st = materialInput.st;
+          float ground = texture(reliefMap, st).r * 255.0 * stepMeters;
+          float depth = level - ground;
+          if (depth <= 0.0) discard;
+
           float time = czm_frameNumber * animationSpeed;
-          vec4 noise = czm_getWaterNoise(normalMap, materialInput.st * frequency, time, 0.0);
-          vec3 normalTS = normalize(noise.xyz * vec3(1.0, 1.0, 1.0 / amplitude));
+          vec4 a = czm_getWaterNoise(normalMap, st * frequency, time, 0.0);
+          vec4 b = czm_getWaterNoise(normalMap, st * frequency * 0.43 + 0.37, time * 0.7, 1.3);
+          vec3 normalTS = normalize((a.xyz + 0.7 * b.xyz) * vec3(1.0, 1.0, 1.0 / amplitude));
           vec3 normalEC = normalize(materialInput.tangentToEyeMatrix * normalTS);
 
-          float cosTheta = clamp(dot(normalEC, normalize(materialInput.positionToEyeEC)), 0.0, 1.0);
-          float fresnel = 0.04 + 0.96 * pow(1.0 - cosTheta, 5.0);
+          vec3 toEye = normalize(materialInput.positionToEyeEC);
+          float cosTheta = clamp(dot(normalEC, toEye), 0.0, 1.0);
+          float fresnel = 0.03 + 0.97 * pow(1.0 - cosTheta, 5.0);
 
-          vec3 mud = czm_gammaCorrect(mudColor).rgb;
-          vec3 sky = czm_gammaCorrect(skyColor).rgb;
-          material.diffuse = mix(mud, sky, fresnel);
-          // Crêtes des vagues un peu plus claires, comme dans « Water ».
-          material.diffuse += 0.08 * clamp(dot(normalTS, vec3(0.0, 0.0, 1.0)), 0.0, 1.0);
-          material.alpha = mudColor.a;
+          float deep = smoothstep(0.0, 1.8, depth);
+          vec3 water = mix(czm_gammaCorrect(shallowColor).rgb, czm_gammaCorrect(deepColor).rgb, deep);
+          // Turbidité : de grandes traînées plus claires ou plus sombres, la
+          // terre charriée par le courant.
+          float murk = czm_getWaterNoise(normalMap, st * 18.0, time * 0.15, 2.1).x;
+          water *= 0.86 + 0.28 * clamp(0.5 + 0.5 * murk, 0.0, 1.0);
+          // Rides : l'éclairage des vagues, plus marqué que dans « Water ».
+          water *= 0.9 + 0.22 * clamp(0.5 + 0.5 * (normalTS.x + normalTS.y), 0.0, 1.0);
+          vec3 color = mix(water, czm_gammaCorrect(skyColor).rgb, min(1.0, 1.15 * fresnel));
+
+          // Écume de rive : une frange qui bat, déchirée par les vagues.
+          float wave = 0.5 + 0.5 * sin(time * 9.0 + (a.x + b.y) * 6.0);
+          float shore = 1.0 - smoothstep(0.03, 0.16 + 0.08 * wave, depth);
+          float tear = smoothstep(0.35, 0.75, a.y * 0.5 + 0.5);
+          float foam = shore * tear;
+          color = mix(color, czm_gammaCorrect(foamColor).rgb, 0.75 * foam);
+
+          material.diffuse = color;
+          material.alpha = clamp(mix(0.62, 0.94, deep) + 0.3 * foam, 0.0, 0.97)
+            * smoothstep(0.0, 0.035, depth);
           material.normal = normalEC;
-          material.specular = specularIntensity;
-          material.shininess = 18.0;
+          material.specular = mix(0.9, 0.2, foam);
+          material.shininess = 90.0;
           return material;
         }
       `,
     },
   });
+  // La carte est posée après coup : Cesium recopie en profondeur la
+  // description d'un matériau déjà connu, et un canevas ne se recopie pas —
+  // la deuxième crue d'une session échouait.
+  material.uniforms.reliefMap = reliefMap;
+  return material;
 }
 
 // ---------------------------------------------------------------------------
@@ -326,6 +374,7 @@ export class DisasterEffects {
   private byId = new Map<string, Building>();
 
   private water: Cesium.Primitive | null = null;
+  private waterMaterial: Cesium.Material | null = null;
   private waterBottom = 0;
   private waterUp = new Cesium.Cartesian3();
 
@@ -353,6 +402,8 @@ export class DisasterEffects {
     private scene: Cesium.Scene,
     private city: City,
     private groundAt: (lon: number, lat: number) => number,
+    /** Vrai quand le relevé de Google remplace la ville dessinée. */
+    private photoreal: () => boolean = () => false,
   ) {
     for (const b of city.buildings) this.byId.set(b.id, b);
     const light = scene.light as Cesium.DirectionalLight;
@@ -418,9 +469,13 @@ export class DisasterEffects {
     // Poussière des effondrements, seulement pendant une lecture vers l'avant.
     if (player.recentSpan > 0 && player.recentSpan < 1.5) {
       for (const e of player.recent) {
-        if (e.state !== 'collapsed' && e.state !== 'partial') continue;
         const b = this.byId.get(e.id);
-        if (b) this.spawnDust(b, now);
+        if (!b) continue;
+        if (e.state === 'collapsed' || e.state === 'partial') this.spawnDust(b, now);
+        // Une façade qui se fissure lâche son enduit et quelques tuiles : une
+        // bouffée plus légère, seulement près du drone, où elle se voit.
+        else if (e.state === 'cracked' && tl.scenario?.kind === 'seisme')
+          this.spawnDust(b, now, true);
       }
     }
     this.expireDust(now);
@@ -548,6 +603,7 @@ export class DisasterEffects {
     const prims = this.scene.primitives;
     if (this.water) prims.remove(this.water);
     this.water = null;
+    this.waterMaterial = null;
 
     if (this.blast) {
       prims.remove(this.blast.wave);
@@ -571,20 +627,42 @@ export class DisasterEffects {
   /**
    * Une nappe d'eau plane couvrant la zone, posée au point le plus bas puis
    * relevée par sa `modelMatrix` à mesure que l'eau monte : on ne reconstruit
-   * rien pendant la crue. C'est le relief qui la découpe — le test de
-   * profondeur contre le terrain la cache là où le sol est plus haut que l'eau.
+   * rien pendant la crue. Sa carte du relief, calculée une fois, la découpe
+   * (voir `floodWaterMaterial`).
    *
    * Couleur boueuse, pas bleue : une crue charrie la terre qu'elle arrache.
    */
   private prepareFlood(): void {
     this.waterBottom = floodBottom(this.city);
     const { lon, lat } = this.city.center;
-    const half = 700;
-    const dLat = half / 111320;
-    const dLon = half / (111320 * Math.cos((lat * Math.PI) / 180));
+    const mLon = 111320 * Math.cos((lat * Math.PI) / 180);
+    const dLat = FLOOD_HALF / 111320;
+    const dLon = FLOOD_HALF / mLon;
 
-    const material = floodWaterMaterial();
+    // Le relief sous la nappe, au-dessus du pied le plus bas : le nord en haut
+    // de l'image, comme Cesium la plaque sur le rectangle.
+    const map = document.createElement('canvas');
+    map.width = map.height = FLOOD_MAP;
+    const ctx = map.getContext('2d');
+    if (ctx) {
+      const image = ctx.createImageData(FLOOD_MAP, FLOOD_MAP);
+      const cell = (2 * FLOOD_HALF) / FLOOD_MAP;
+      for (let row = 0; row < FLOOD_MAP; row++) {
+        const north = FLOOD_HALF - (row + 0.5) * cell;
+        for (let col = 0; col < FLOOD_MAP; col++) {
+          const east = -FLOOD_HALF + (col + 0.5) * cell;
+          const above = this.groundAt(lon + east / mLon, lat + north / 111320) - this.waterBottom;
+          const v = Math.max(0, Math.min(255, Math.round(above / FLOOD_STEP)));
+          const k = (row * FLOOD_MAP + col) * 4;
+          image.data[k] = image.data[k + 1] = image.data[k + 2] = v;
+          image.data[k + 3] = 255;
+        }
+      }
+      ctx.putImageData(image, 0, 0);
+    }
 
+    const material = floodWaterMaterial(map);
+    this.waterMaterial = material;
     this.water = new Cesium.Primitive({
       geometryInstances: new Cesium.GeometryInstance({
         geometry: new Cesium.RectangleGeometry({
@@ -602,11 +680,16 @@ export class DisasterEffects {
   }
 
   private updateFlood(s: Scenario, t: number): void {
-    if (!this.water) return;
+    if (!this.water || !this.waterMaterial) return;
     const rise = floodLevel(s, t, this.waterBottom) - this.waterBottom;
     this.water.show = rise > 0.02;
+    this.waterMaterial.uniforms.level = rise;
+    // Sur la ville photoréaliste, la surface est dessinée un peu plus haut que
+    // l'eau : le relevé de Google, calé au mètre près, la cachait. La carte du
+    // relief garde, elle, la vraie profondeur.
+    const lift = rise + (this.photoreal() ? FLOOD_LIFT : 0.02);
     this.water.modelMatrix = Cesium.Matrix4.fromTranslation(
-      Cesium.Cartesian3.multiplyByScalar(this.waterUp, rise, new Cesium.Cartesian3()),
+      Cesium.Cartesian3.multiplyByScalar(this.waterUp, lift, new Cesium.Cartesian3()),
     );
   }
 
@@ -943,10 +1026,16 @@ export class DisasterEffects {
   // Poussière d'effondrement
   // ------------------------------------------------------------------------
 
-  private spawnDust(b: Building, now: number): void {
-    if (this.dust.length >= MAX_DUST || this.budget < 1) return;
+  /** @param light une bouffée d'enduit, pour une façade fissurée, et non le nuage d'un effondrement. */
+  private spawnDust(b: Building, now: number, light = false): void {
+    if (this.dust.length >= (light ? MAX_DUST - 4 : MAX_DUST) || this.budget < 1) return;
     const base = Cesium.Cartesian3.fromDegrees(b.lon, b.lat, b.baseHeight);
-    if (Cesium.Cartesian3.distance(base, this.scene.camera.positionWC) > EFFECT_RANGE) return;
+    const range = light ? EFFECT_RANGE * 0.4 : EFFECT_RANGE;
+    if (Cesium.Cartesian3.distance(base, this.scene.camera.positionWC) > range) return;
+    if (light) {
+      this.spawnPuff(b, now);
+      return;
+    }
 
     const size = Math.max(b.width, b.depth);
     const ps = new Cesium.ParticleSystem({
@@ -975,6 +1064,37 @@ export class DisasterEffects {
     this.scene.primitives.add(ps);
     this.budget -= 1;
     this.dust.push({ ps, until: now + 7000 });
+  }
+
+  /** Bouffée d'enduit le long d'une façade fissurée : peu de grains, vite retombés. */
+  private spawnPuff(b: Building, now: number): void {
+    const size = Math.max(b.width, b.depth);
+    const top = Cesium.Cartesian3.fromDegrees(b.lon, b.lat, b.baseHeight + b.height * 0.6);
+    const ps = new Cesium.ParticleSystem({
+      image: this.sprite,
+      modelMatrix: Cesium.Transforms.eastNorthUpToFixedFrame(top),
+      emitter: new Cesium.CircleEmitter(Math.max(size * 0.45, 3)),
+      emissionRate: 0,
+      bursts: [new Cesium.ParticleBurst({ time: 0, minimum: 10, maximum: 16 })],
+      lifetime: 3.5,
+      loop: false,
+      minimumSpeed: 0.5,
+      maximumSpeed: 2,
+      minimumParticleLife: 1.6,
+      maximumParticleLife: 3,
+      startColor: new Cesium.Color(0.7, 0.66, 0.58, 0.55),
+      endColor: new Cesium.Color(0.7, 0.66, 0.58, 0),
+      startScale: 0.6,
+      endScale: 1.8,
+      minimumImageSize: new Cesium.Cartesian2(3, 3),
+      maximumImageSize: new Cesium.Cartesian2(5, 5),
+      sizeInMeters: true,
+      // Elle retombe : de l'enduit et des éclats, pas de la fumée.
+      updateCallback: buoyancy(-1.5, 0.6),
+    });
+    this.scene.primitives.add(ps);
+    this.budget -= 1;
+    this.dust.push({ ps, until: now + 4000 });
   }
 
   private expireDust(now: number): void {

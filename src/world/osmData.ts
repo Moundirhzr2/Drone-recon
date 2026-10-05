@@ -164,7 +164,7 @@ export async function fetchOsmBuildings(
     elements = await overpass(query, progress);
   } catch (err) {
     console.warn('[ville] Overpass indisponible, tuiles vectorielles', err);
-    progress('bâtiments (OpenStreetMap, tuiles OpenFreeMap)…');
+    progress('buildings (OpenStreetMap, OpenFreeMap tiles)…');
     return fetchTileBuildings(place, CITY_HALF_SIZE);
   }
   const toLocal = ({ lat, lon }: OsmGeometry): Point => [
@@ -202,12 +202,11 @@ export async function fetchOsmBuildings(
       );
     });
   }
-  if (!buildings.length)
-    throw new Error('aucun bâtiment dans OpenStreetMap ici : choisir un lieu bâti');
+  if (!buildings.length) throw new Error('no OpenStreetMap building here: choose a built-up place');
 
   return {
     zone: { name: place.name, lat: place.lat, lon: place.lon, halfSize: CITY_HALF_SIZE },
-    attribution: '© les contributeurs d’OpenStreetMap (ODbL)',
+    attribution: '© OpenStreetMap contributors (ODbL)',
     buildings,
   };
 }
@@ -216,7 +215,7 @@ export async function fetchOsmBuildings(
 async function overpass(query: string, progress: (text: string) => void): Promise<OsmElement[]> {
   let last: unknown = null;
   for (const [i, server] of SERVERS.entries()) {
-    progress(`bâtiments (OpenStreetMap), serveur ${i + 1} sur ${SERVERS.length}…`);
+    progress(`buildings (OpenStreetMap), server ${i + 1} of ${SERVERS.length}…`);
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), TIMEOUT);
     try {
@@ -234,7 +233,7 @@ async function overpass(query: string, progress: (text: string) => void): Promis
     }
   }
   const reason = last instanceof Error ? last.message : String(last);
-  throw new Error(`OpenStreetMap ne répond pas (${reason}) : réessayer dans un moment`);
+  throw new Error(`OpenStreetMap is not responding (${reason}): try again in a moment`);
 }
 
 /** Un bâtiment OpenStreetMap, au format de la BD TOPO® qu'attend `realCity.ts`. */

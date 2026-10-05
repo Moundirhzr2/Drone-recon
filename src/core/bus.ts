@@ -25,8 +25,12 @@ export type AppEvents = {
   'view:reset-camera': void;
   /** Basculer entre caméra de suivi et vue à la première personne. */
   'view:toggle-fpv': void;
+  /** Basculer la vue principale à la verticale du drone, comme la caméra nadir. */
+  'view:toggle-nadir': void;
   /** Masquer ou afficher toute l'interface, pour ne garder que la vue 3D. */
   'view:toggle-hud': void;
+  /** Ouvrir ou fermer l'aide du clavier (touche ?). */
+  'help:toggle': void;
   /** Rétablir et fixer la pleine qualité d'image, ou rendre la main au régulateur. */
   'view:toggle-quality': void;
   /** Lancer ou arrêter l'export d'un jeu de données annoté, en quadrillage ou varié. */

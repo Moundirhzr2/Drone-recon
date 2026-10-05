@@ -100,14 +100,13 @@ export class TrainedDetector {
       const base = new URL(import.meta.env.BASE_URL + CONFIG.model.path, window.location.href).href;
       const response = await fetch(`${base}.json`);
       if (!response.ok) {
-        throw new Error(`fiche du modèle introuvable (${response.status}), voir ml/README.md`);
+        throw new Error(`model card not found (${response.status}), see ml/README.md`);
       }
       const card = (await response.json()) as ModelCard;
-      if (card.format !== 'yolo')
-        throw new Error(`format de sortie non pris en charge : ${card.format}`);
+      if (card.format !== 'yolo') throw new Error(`unsupported output format: ${card.format}`);
       const unknown = card.classes.filter((c) => !DAMAGE_ORDER.includes(c as DamageState));
       if (unknown.length)
-        throw new Error(`classes inconnues du simulateur : ${unknown.join(', ')}`);
+        throw new Error(`classes unknown to the simulator: ${unknown.join(', ')}`);
 
       const worker = new Worker(new URL('./model.worker.ts', import.meta.url), { type: 'module' });
       this.worker = worker;
@@ -116,7 +115,7 @@ export class TrainedDetector {
           if (e.data.type === 'ready') resolve(e.data.backend);
           else if (e.data.type === 'error') reject(new Error(e.data.message));
         };
-        worker.onerror = (e) => reject(new Error(e.message || 'le worker du modèle a échoué'));
+        worker.onerror = (e) => reject(new Error(e.message || 'the model worker failed'));
         const init: WorkerRequest = {
           type: 'init',
           url: `${base}.onnx`,
@@ -259,7 +258,7 @@ export function compareToTruth(
       nearest >= 0 && best >= LOOSE_IOU ? byId.get(truth[nearest].buildingId) : undefined;
     detections.push({
       buildingId: annotation?.buildingId ?? '—',
-      name: building?.name ?? (aimed ? `${aimed.name}, boîte imprécise` : 'Aucun bâtiment'),
+      name: building?.name ?? (aimed ? `${aimed.name}, loose box` : 'No building'),
       predicted,
       truth: real,
       score: box.score,
@@ -303,24 +302,22 @@ export function rescale(detections: Detection[], from: number, to: number): Dete
 /** Résumé pour le rapport : quel modèle, où il tourne, et dans quelles limites. */
 export function describe(detector: TrainedDetector, agl: number): string {
   const card = detector.card;
-  if (detector.state === 'loading') return 'Chargement du modèle…';
-  if (detector.state === 'error') return `Modèle indisponible : ${detector.error}`;
+  if (detector.state === 'loading') return 'Loading the model…';
+  if (detector.state === 'error') return `Model unavailable: ${detector.error}`;
   if (!card) return '';
   const fr = (v: number, digits: number) =>
-    v.toLocaleString('fr-FR', { minimumFractionDigits: digits, maximumFractionDigits: digits });
-  const where = detector.backend === 'webgpu' ? 'Sur la carte graphique' : 'Sur le processeur';
+    v.toLocaleString('en-GB', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  const where = detector.backend === 'webgpu' ? 'On the graphics card' : 'On the CPU';
   const lines = [
-    `${card.name}, passe ${card.epoch} : mAP50 ${fr(card.validation.mAP50, 2)} en validation.`,
-    `${where}, ${fr(detector.ms, 0)} ms par image.`,
-    '« Fissuré » compte comme intact : ce rendu ne le montre pas.',
+    `${card.name}, epoch ${card.epoch}: mAP50 ${fr(card.validation.mAP50, 2)} on validation.`,
+    `${where}, ${fr(detector.ms, 0)} ms per image.`,
+    '"Cracked" counts as intact: the model was not trained on it.',
   ];
   // Une marge, car un détecteur tolère un peu d'écart de taille apparente.
   const [lowest, highest] = card.trainedAltitudes;
   if (agl < lowest - ALTITUDE_MARGIN || agl > highest + ALTITUDE_MARGIN) {
-    const trained = lowest === highest ? `à ${lowest} m` : `entre ${lowest} et ${highest} m`;
-    lines.push(
-      `Entraîné ${trained} : à ${fr(agl, 0)} m, les bâtiments n'ont pas la taille qu'il connaît.`,
-    );
+    const trained = lowest === highest ? `at ${lowest} m` : `between ${lowest} and ${highest} m`;
+    lines.push(`Trained ${trained}: at ${fr(agl, 0)} m, buildings do not have the size it knows.`);
   }
   return lines.join(' ');
 }

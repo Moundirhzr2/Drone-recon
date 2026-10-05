@@ -31,8 +31,8 @@ import { PhotorealCity, wantsPhotoreal } from './world/photoreal';
 import { Obstacles, type Solid } from './world/obstacles';
 import { Drone } from './drone/drone';
 import { DroneModel } from './drone/model';
-import { DroneCamera } from './drone/camera';
-import { NadirView } from './drone/nadir';
+import { DroneCamera, type CameraMode } from './drone/camera';
+import { NadirView, type NadirGeometry } from './drone/nadir';
 import { PhotoLog } from './drone/photo';
 import { ControlMixer } from './input/control';
 import { KeyboardControl } from './input/keyboard';
@@ -50,6 +50,7 @@ import {
   annotateCapture,
   CaptureSaver,
   grabView,
+  pairSheet,
   sideBySide,
   timestamp,
   toPng,
@@ -58,12 +59,12 @@ import {
 import { downloadScenario, pickScenarioFile, scenarioFileName } from './disaster/scenarioFile';
 import {
   boot,
-  buildKeymap,
   flashShutter,
   Gallery,
   GpsPanel,
   HandsPanel,
   HudToggle,
+  KeyHelp,
   NadirPanel,
   QualityButton,
   ReportPanel,
@@ -88,9 +89,9 @@ async function resolvePlace(): Promise<{
   try {
     let place: Place;
     if ('query' in wanted) {
-      boot.set(`Recherche de « ${wanted.query} »…`, 0.04);
+      boot.set(`Searching for "${wanted.query}"…`, 0.04);
       const [first] = await searchPlaces(wanted.query);
-      if (!first) throw new Error(`lieu introuvable : « ${wanted.query} »`);
+      if (!first) throw new Error(`place not found: "${wanted.query}"`);
       place = first;
     } else {
       place = wanted;
@@ -107,7 +108,8 @@ async function resolvePlace(): Promise<{
 }
 
 async function main(): Promise<void> {
-  buildKeymap();
+  const keyHelp = new KeyHelp();
+  on('help:toggle', () => keyHelp.toggle());
   boot.set('Initialisation…', 0.05);
 
   // --- Lieu du vol ----------------------------------------------------------
@@ -117,7 +119,7 @@ async function main(): Promise<void> {
 
   // --- Monde -------------------------------------------------------------
   // Le relief d'abord : la scène en a besoin pour construire son terrain.
-  boot.set('Chargement du relief…', 0.08);
+  boot.set('Loading the relief…', 0.08);
   const relief = await loadRelief(placeData?.relief);
   const { viewer, scene, backendLabel, gpu } = await createWorld('cesium', boot.set, relief);
   // Qualité d'image choisie d'après la carte graphique, puis tenue en vol.
@@ -125,19 +127,19 @@ async function main(): Promise<void> {
 
   // Les vrais bâtiments de l'IGN ; la ville générée ne sert plus que de secours
   // si les données ne sont pas là.
-  boot.set('Chargement des bâtiments réels…', 0.6);
+  boot.set('Loading the real buildings…', 0.6);
   const city = (await loadRealCity(relief, placeData?.city)) ?? generateCity();
 
   const renderer = new BuildingRenderer(scene, city);
   renderer.build();
-  boot.set(`${city.buildings.length} bâtiments construits`, 0.8);
+  boot.set(`${city.buildings.length} buildings built`, 0.8);
 
   // La ville photoréaliste : le relevé 3D de Google posé sur le relief de
   // l'IGN, quand un jeton est fourni. La simulation, elle, reste sur les
   // bâtiments de l'IGN (voir `world/photoreal.ts`).
   let photoreal: PhotorealCity | null = null;
   if (relief && wantsPhotoreal()) {
-    boot.set('Chargement de la ville photoréaliste…', 0.85);
+    boot.set('Loading the photorealistic city…', 0.85);
     photoreal = await PhotorealCity.load(
       scene,
       city,
@@ -150,9 +152,9 @@ async function main(): Promise<void> {
     }
   }
   const worldLabel = photoreal
-    ? 'ville réelle photoréaliste'
+    ? 'photorealistic real city'
     : wantsPhotoreal()
-      ? 'ville dessinée (relevé photoréaliste indisponible)'
+      ? 'drawn city (photorealistic tiles unavailable)'
       : backendLabel;
 
   // --- Drone ---------------------------------------------------------------
@@ -167,6 +169,7 @@ async function main(): Promise<void> {
   const model = CONFIG.drone.showModel ? DroneModel.create(viewer, drone.state) : null;
   const camera = new DroneCamera(scene.camera, drone.state);
   const nadir = new NadirView(scene, drone.state);
+  if (model) nadir.around = (draw) => model.hidden(draw);
   const photos = new PhotoLog(nadir, drone.state);
 
   // --- Entrées --------------------------------------------------------------
@@ -180,7 +183,7 @@ async function main(): Promise<void> {
 
   // --- Simulateur de désastres (partie 2) -----------------------------------
   const player = new DisasterPlayer(city);
-  const effects = new DisasterEffects(scene, city, groundAt);
+  const effects = new DisasterEffects(scene, city, groundAt, () => photoreal?.shown ?? false);
 
   // --- Interface -------------------------------------------------------------
   const gps = new GpsPanel(drone.home);
@@ -189,11 +192,11 @@ async function main(): Promise<void> {
   // Contacts, atterrissages et décollages : un message, sans en noyer le pilote
   // quand il reste appuyé contre un mur.
   const onWhat = (solid: Solid | null) => {
-    if (!solid) return 'le sol';
+    if (!solid) return 'the ground';
     const name = solid.building.name;
-    if (solid.kind === 'toit') return `le toit (${name})`;
-    if (solid.kind === 'mur') return `un mur resté debout (${name})`;
-    return `les gravats (${name})`;
+    if (solid.kind === 'toit') return `the roof (${name})`;
+    if (solid.kind === 'mur') return `a standing wall (${name})`;
+    return `the rubble (${name})`;
   };
   let lastContact = 0;
   drone.onEvent = (e) => {
@@ -201,19 +204,16 @@ async function main(): Promise<void> {
       const now = performance.now();
       if (now - lastContact < 1500) return;
       lastContact = now;
-      const what = e.solid.kind === 'toit' ? 'façade' : e.solid.kind === 'mur' ? 'mur' : 'gravats';
-      handsPanel.setMessage(
-        `Contact : ${what} (${e.solid.building.name}) — le drone s'arrête`,
-        'err',
-      );
+      const what = e.solid.kind === 'toit' ? 'façade' : e.solid.kind === 'mur' ? 'wall' : 'rubble';
+      handsPanel.setMessage(`Contact: ${what} (${e.solid.building.name}) — the drone stops`, 'err');
     } else if (e.type === 'landed') {
-      const hard = e.speed > 2.5 ? ` — atterrissage brutal, ${e.speed.toFixed(1)} m/s` : '';
+      const hard = e.speed > 2.5 ? ` — hard landing, ${e.speed.toFixed(1)} m/s` : '';
       handsPanel.setMessage(
-        `Posé sur ${onWhat(e.on)}${hard}. Gaz pour redécoller`,
+        `Landed on ${onWhat(e.on)}${hard}. Throttle up to take off`,
         hard ? 'err' : 'ok',
       );
     } else {
-      handsPanel.setMessage('Décollage', 'ok');
+      handsPanel.setMessage('Take-off', 'ok');
     }
   };
   const report = new ReportPanel();
@@ -240,7 +240,10 @@ async function main(): Promise<void> {
   // il suffit de lui signaler qu'un état a changé.
   const disasterPanel = new DisasterPanel(city, player, {
     onRebuild: () => {
+      const hazard = player.current?.scenario?.kind ?? null;
+      renderer.setHazard(hazard);
       renderer.sync();
+      photoreal?.setHazard(hazard);
       photoreal?.sync();
     },
     // Scénario annulé ou remplacé : la sélection de bâtiments ne vaut plus.
@@ -260,7 +263,7 @@ async function main(): Promise<void> {
   const scenarioName = document.getElementById('dis-file-name') as HTMLInputElement;
   document.getElementById('dis-save')?.addEventListener('click', () => {
     const s = drone.state;
-    const name = scenarioName.value.trim() || `Scénario du ${new Date().toLocaleString('fr-FR')}`;
+    const name = scenarioName.value.trim() || `Scenario of ${new Date().toLocaleString('en-GB')}`;
     // Le point de vue part avec le scénario : on retrouvera la même
     // comparaison avant / après.
     downloadScenario(
@@ -271,7 +274,7 @@ async function main(): Promise<void> {
         heading: s.heading,
       }),
     );
-    handsPanel.setMessage(`Scénario enregistré : ${scenarioFileName(name)}`, 'ok');
+    handsPanel.setMessage(`Scenario saved: ${scenarioFileName(name)}`, 'ok');
   });
   document.getElementById('dis-load')?.addEventListener('click', () => {
     void pickScenarioFile().then((text) => {
@@ -285,14 +288,11 @@ async function main(): Promise<void> {
           drone.state.msl = groundAt(v.lon, v.lat) + v.agl;
           camera.snap();
         }
-        const skipped = missing ? ` (${missing} bâtiment(s) inconnu(s) ignoré(s))` : '';
-        handsPanel.setMessage(
-          `Scénario « ${file.name} » chargé${skipped} — B / N pour comparer`,
-          'ok',
-        );
+        const skipped = missing ? ` (${missing} unknown building(s) skipped)` : '';
+        handsPanel.setMessage(`Scenario "${file.name}" loaded${skipped} — B / N to compare`, 'ok');
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
-        handsPanel.setMessage(`Scénario illisible : ${reason}`, 'err');
+        handsPanel.setMessage(`Unreadable scenario: ${reason}`, 'err');
       }
     });
   });
@@ -339,15 +339,15 @@ async function main(): Promise<void> {
     agl: drone.state.agl,
     heading: drone.state.heading,
     credits: photoreal?.shown
-      ? 'Relevé 3D : Google · Cesium ion'
+      ? '3D tiles: Google · Cesium ion'
       : city.attribution?.includes('IGN')
-        ? 'Données : IGN — BD TOPO®, BD ORTHO®, RGE ALTI®'
-        : 'Données : © OpenStreetMap (ODbL) · imagerie Esri, Maxar · relief Mapzen',
+        ? 'Data: IGN — BD TOPO®, BD ORTHO®, RGE ALTI®'
+        : 'Data: © OpenStreetMap (ODbL) · imagery Esri, Maxar · relief Mapzen',
     ...extra,
   });
   const captureFailed = (err: unknown) =>
     handsPanel.setMessage(
-      `Capture non enregistrée : ${err instanceof Error ? err.message : String(err)}`,
+      `Capture not saved: ${err instanceof Error ? err.message : String(err)}`,
       'err',
     );
 
@@ -370,10 +370,10 @@ async function main(): Promise<void> {
     gallery.add(photo);
     void (async () => {
       await folder;
-      await saver.save(`capture_${stamp}_vue.png`, await toPng(view));
+      await saver.save(`capture_${stamp}_view.png`, await toPng(view));
       await saver.save(`capture_${stamp}_nadir.png`, await (await fetch(photo.dataUrl)).blob());
       handsPanel.setMessage(
-        `Capture enregistrée dans ${saver.destination} : capture_${stamp}_vue.png et _nadir.png`,
+        `Capture saved in ${saver.destination}: capture_${stamp}_view.png and _nadir.png`,
         'ok',
       );
     })().catch(captureFailed);
@@ -394,11 +394,84 @@ async function main(): Promise<void> {
       calm = ready ? calm + 1 : 0;
     }
   };
+  /**
+   * La photo nadir du moment, à la définition des photos : la vue verticale
+   * charge ses propres tuiles, on la rend donc jusqu'à ce qu'elle soit complète.
+   */
+  const grabNadir = async () => {
+    const out = document.createElement('canvas');
+    out.width = out.height = CONFIG.nadir.photoSize;
+    const start = performance.now();
+    let calm = 0;
+    while (calm < 3 && performance.now() - start < 8000) {
+      await new Promise((r) => requestAnimationFrame(r));
+      nadir.render(out, false);
+      const ready =
+        renderer.idle &&
+        (!scene.globe.show || scene.globe.tilesLoaded) &&
+        (photoreal?.tilesLoaded ?? true);
+      calm = ready ? calm + 1 : 0;
+    }
+    const g = nadir.render(out, false);
+    return { image: out, g };
+  };
+
+  /**
+   * La photo nadir avec le diagnostic du détecteur : un cadre par bâtiment
+   * signalé, à la couleur de sa classe, en pointillés pour une fausse alerte,
+   * et la précision et le rappel mesurés contre la vérité du simulateur.
+   */
+  const diagnosticOf = (image: HTMLCanvasElement, g: NadirGeometry) => {
+    const result = analyse(city.buildings, g);
+    const out = document.createElement('canvas');
+    out.width = image.width;
+    out.height = image.height;
+    const ctx = out.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(image, 0, 0);
+      // Les cadres sont dessinés à demi-définition puis agrandis : traits et
+      // étiquettes restent lisibles sur une photo de 1024 px.
+      const half = Math.round(g.size / 2);
+      const overlay = document.createElement('canvas');
+      overlay.width = overlay.height = half;
+      drawNadirOverlay(
+        overlay,
+        rescale(result.detections, g.size, half),
+        { ...g, size: half },
+        true,
+      );
+      ctx.drawImage(overlay, 0, 0, out.width, out.height);
+    }
+    const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)} %`);
+    const m = result.metrics;
+    const targets = result.detections.length;
+    const summary = `precision ${pct(m.precision)} · recall ${pct(m.recall)} · ${targets} target(s)`;
+    return { image: out, summary, metrics: { precision: m.precision, recall: m.recall, targets } };
+  };
+
+  // Aperçu de la paire nadir, à l'écran : un clic ou Échap le ferme.
+  const preview = document.getElementById('pair-preview');
+  const closePreview = () => {
+    if (preview) preview.hidden = true;
+  };
+  preview?.addEventListener('click', closePreview);
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && preview && !preview.hidden) closePreview();
+  });
+  const pairCaption = document.getElementById('pair-preview-caption');
+  const showPair = (pair: HTMLCanvasElement, caption: string) => {
+    const box = document.getElementById('pair-preview-images');
+    if (!preview || !box || !pairCaption) return;
+    box.replaceChildren(pair);
+    pairCaption.textContent = caption;
+    preview.hidden = false;
+  };
+
   const capturePair = async () => {
     if (pairBusy) return;
     if (!player.current) {
       handsPanel.setMessage(
-        'Paire avant / après : lancer d’abord un sinistre, ou poser des dégâts (E)',
+        'Before / after pair: start a disaster first, or set damage by hand (E)',
         'err',
       );
       return;
@@ -411,26 +484,55 @@ async function main(): Promise<void> {
     // Le drone ne bouge pas entre les deux images : c'est le même point de vue.
     drone.state.holding = true;
     const subtitle = disasterPanel.describe();
-    handsPanel.setMessage('Paire avant / après : prise de vue…');
+    handsPanel.setMessage('Before / after pair: capturing…');
     try {
+      // Chaque état est pris deux fois : la vue du pilote, puis la verticale.
       disasterPanel.jump('start');
       await settle();
       const before = grabView(viewer);
-      annotateCapture(before, captureInfo({ title: 'AVANT', subtitle }));
+      annotateCapture(before, captureInfo({ title: 'BEFORE', subtitle }));
+      const { image: beforeNadir } = await grabNadir();
       disasterPanel.jump('end');
       await settle();
       const after = grabView(viewer);
-      annotateCapture(after, captureInfo({ title: 'APRÈS', subtitle }));
+      annotateCapture(after, captureInfo({ title: 'AFTER', subtitle }));
+      const { image: afterNadir, g: afterGeometry } = await grabNadir();
+      // Le diagnostic part de la photo « après » nue, avant son bandeau.
+      const diag = diagnosticOf(afterNadir, afterGeometry);
+      // La planche part des images nues : une étiquette sur chacune, un seul
+      // bandeau dessous. Les images seules reçoivent ensuite le leur.
+      const sheet = pairSheet(
+        [
+          { image: beforeNadir, label: 'BEFORE' },
+          { image: afterNadir, label: 'AFTER' },
+          { image: diag.image, label: 'DIAGNOSTIC' },
+        ],
+        captureInfo({ subtitle }),
+        diag.metrics,
+      );
+      annotateCapture(beforeNadir, captureInfo({ title: 'BEFORE', subtitle: 'nadir view' }));
+      annotateCapture(afterNadir, captureInfo({ title: 'AFTER', subtitle: 'nadir view' }));
+      annotateCapture(diag.image, captureInfo({ title: 'DIAGNOSTIC', subtitle: diag.summary }));
       flashShutter();
+      const files = `capture_${stamp}_*.png`;
+      showPair(sheet, `Saving 7 images: ${files}…`);
       await folder;
-      await saver.save(`capture_${stamp}_avant.png`, await toPng(before));
-      await saver.save(`capture_${stamp}_apres.png`, await toPng(after));
-      await saver.save(`capture_${stamp}_avant-apres.png`, await toPng(sideBySide(before, after)));
+      await saver.save(`capture_${stamp}_before.png`, await toPng(before));
+      await saver.save(`capture_${stamp}_after.png`, await toPng(after));
+      await saver.save(`capture_${stamp}_before-after.png`, await toPng(sideBySide(before, after)));
+      await saver.save(`capture_${stamp}_before_nadir.png`, await toPng(beforeNadir));
+      await saver.save(`capture_${stamp}_after_nadir.png`, await toPng(afterNadir));
+      await saver.save(`capture_${stamp}_diagnostic_nadir.png`, await toPng(diag.image));
+      await saver.save(`capture_${stamp}_before-after_nadir.png`, await toPng(sheet));
+      if (pairCaption) pairCaption.textContent = `7 images saved in ${saver.destination}: ${files}`;
       handsPanel.setMessage(
-        `Paire avant / après enregistrée dans ${saver.destination} : capture_${stamp}_avant, _apres, _avant-apres`,
+        `Before / after pair saved in ${saver.destination}: pilot view, nadir view and diagnostic (7 images)`,
         'ok',
       );
     } catch (err) {
+      if (pairCaption) {
+        pairCaption.textContent = `Not saved: ${err instanceof Error ? err.message : String(err)}`;
+      }
       captureFailed(err);
     } finally {
       disasterPanel.seek(time);
@@ -472,26 +574,26 @@ async function main(): Promise<void> {
     diagnostic = !diagnostic;
     syncViews();
     report.setOpen(diagnostic || modelOn);
-    handsPanel.setMessage(diagnostic ? 'Vue diagnostique' : 'Vue brute', 'ok');
+    handsPanel.setMessage(diagnostic ? 'Diagnostic view' : 'Raw view', 'ok');
   });
 
   on('model:toggle', () => {
     if (modelOn) {
       setModel(false);
-      handsPanel.setMessage('Détecteur simulé', 'ok');
+      handsPanel.setMessage('Simulated detector', 'ok');
       return;
     }
     setModel(true);
-    handsPanel.setMessage('Chargement du modèle entraîné…');
+    handsPanel.setMessage('Loading the trained model…');
     trained.load().then(
       () => {
         if (!modelOn) return;
-        const where = trained.backend === 'webgpu' ? 'carte graphique' : 'processeur';
-        handsPanel.setMessage(`Modèle entraîné actif, sur le ${where} — O pour revenir`, 'ok');
+        const where = trained.backend === 'webgpu' ? 'graphics card' : 'processeur';
+        handsPanel.setMessage(`Trained model active, on the ${where} — O to go back`, 'ok');
       },
       () => {
         setModel(false);
-        handsPanel.setMessage(`Modèle indisponible : ${trained.error}`, 'err');
+        handsPanel.setMessage(`Model unavailable: ${trained.error}`, 'err');
       },
     );
   });
@@ -500,15 +602,24 @@ async function main(): Promise<void> {
     renderMode = RENDER_CYCLE[(RENDER_CYCLE.indexOf(renderMode) + 1) % RENDER_CYCLE.length];
     renderer.setRenderMode(renderMode);
     syncViews();
-    handsPanel.setMessage(`Rendu : ${RENDER_LABEL[renderMode]}`, 'ok');
+    handsPanel.setMessage(`Render: ${RENDER_LABEL[renderMode]}`, 'ok');
   });
 
-  on('view:toggle-fpv', () => {
-    const mode = camera.toggle();
-    // Le châssis se masque en vue embarquée, sinon il occupe tout l'écran.
+  const CAMERA_LABEL: Record<CameraMode, string> = {
+    suivi: 'Follow camera',
+    fpv: 'Onboard camera',
+    nadir: 'Nadir view: straight down from the drone, heading up (T to go back)',
+  };
+  const nadirButton = document.getElementById('nadir-pov');
+  const showCamera = (mode: CameraMode) => {
+    // Le châssis se masque à bord, sinon il occupe tout l'écran.
     model?.setVisible(mode === 'suivi');
-    handsPanel.setMessage(mode === 'fpv' ? 'Caméra embarquée' : 'Caméra de suivi', 'ok');
-  });
+    nadirButton?.classList.toggle('on', mode === 'nadir');
+    handsPanel.setMessage(CAMERA_LABEL[mode], 'ok');
+  };
+  on('view:toggle-fpv', () => showCamera(camera.toggle()));
+  on('view:toggle-nadir', () => showCamera(camera.toggleNadir()));
+  nadirButton?.addEventListener('click', () => showCamera(camera.toggleNadir()));
 
   on('view:toggle-hud', () => hudToggle.toggle());
 
@@ -517,8 +628,8 @@ async function main(): Promise<void> {
     qualityButton.update(fixed, quality.degraded);
     handsPanel.setMessage(
       fixed
-        ? 'Qualité fixée : pleine définition, même si la cadence baisse'
-        : 'Qualité automatique : elle baisse au besoin pour rester fluide',
+        ? 'Quality locked: full resolution, even if the frame rate drops'
+        : 'Automatic quality: lowered when needed to stay smooth',
       'ok',
     );
   });
@@ -571,7 +682,7 @@ async function main(): Promise<void> {
   on('drone:reset', () => {
     drone.reset();
     camera.snap();
-    handsPanel.setMessage('Retour au point de décollage', 'ok');
+    handsPanel.setMessage('Back to the take-off point', 'ok');
   });
 
   // Dernière stabilisation demandée (Maj, deux poings) : une paire avant /
@@ -603,15 +714,15 @@ async function main(): Promise<void> {
   camera.snap();
   viewer.resize();
   viewer.render();
-  boot.set(`Prêt — ${place.name} — ${worldLabel} — qualité ${QUALITY_LABEL[quality.profile]}`, 1);
+  boot.set(`Ready — ${place.name} — ${worldLabel} — ${QUALITY_LABEL[quality.profile]} quality`, 1);
   setTimeout(() => boot.hide(), 450);
-  handsPanel.setMessage('Prêt au décollage — H pour piloter aux mains', 'ok');
+  handsPanel.setMessage('Ready for take-off — H to fly with your hands', 'ok');
 
   // --- Choix du lieu : voir `hud/placePicker.ts` ----------------------------
   const picker = new PlacePicker(place);
   if (placeFailure) {
-    picker.showError(`${placeFailure}. Retour à Mulhouse.`);
-    handsPanel.setMessage('Lieu indisponible : retour à Mulhouse', 'err');
+    picker.showError(`${placeFailure}. Back to Mulhouse.`);
+    handsPanel.setMessage('Place unavailable: back to Mulhouse', 'err');
     // Recharger la page ne doit pas retenter le même lieu.
     const params = new URLSearchParams(window.location.search);
     for (const key of ['lieu', 'lat', 'lon']) params.delete(key);
@@ -627,8 +738,8 @@ async function main(): Promise<void> {
     void photoreal.calibrate().then(
       (gap) => {
         if (gap === null) return;
-        const m = gap.toLocaleString('fr-FR', { maximumFractionDigits: 1 });
-        handsPanel.setMessage(`Relevé de Google calé sur le relief : ${m} m d’écart`, 'ok');
+        const m = gap.toLocaleString('en-GB', { maximumFractionDigits: 1 });
+        handsPanel.setMessage(`Google tiles aligned with the relief: ${m} m offset`, 'ok');
       },
       (err) => console.warn('[relevé] calage impossible', err),
     );
@@ -717,11 +828,7 @@ async function main(): Promise<void> {
       if (feed) trained.submit(feed, { ...g, size: inputSize });
       if (!modelOn) lastResult = analyse(city.buildings, g);
       drawNadirOverlay(nadirOverlay, lastResult.detections, g, diagnostic || modelOn);
-      nadirPanel.update(
-        g,
-        lastResult.detections,
-        modelOn ? 'modele' : diagnostic ? 'diagnostic' : 'brut',
-      );
+      nadirPanel.update(g, modelOn ? 'modele' : diagnostic ? 'diagnostic' : 'brut');
     }
 
     // Rendu de la vue principale.
@@ -748,7 +855,7 @@ async function main(): Promise<void> {
     // Résolution d'abord, puis options coûteuses : voir `world/quality.ts`.
     const dropped = quality.update(now, fps);
     if (dropped) {
-      handsPanel.setMessage(`Qualité réduite pour rester fluide : ${dropped} — F pour la rétablir`);
+      handsPanel.setMessage(`Quality lowered to stay smooth: ${dropped} — F to restore it`);
     }
 
     if (now - lastHud > 100) {
@@ -850,6 +957,6 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   console.error(err);
-  boot.set('Échec du démarrage — voir la console', 1);
+  boot.set('Start-up failed — see the console', 1);
   emit('ui:message', { text: String(err), kind: 'err' });
 });

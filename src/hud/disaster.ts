@@ -51,6 +51,7 @@ export interface DisasterPanelHooks {
 
 export class DisasterPanel {
   private panel = $('hud-disaster');
+  private title = $('disaster-title');
   private tag = $('disaster-tag');
   private dot = $('disaster-dot');
   private kindsBox = $('dis-kinds');
@@ -112,8 +113,8 @@ export class DisasterPanel {
     const none = document.createElement('button');
     none.className = 'dis-kind';
     none.dataset.kind = '';
-    none.textContent = 'Aucun aléa';
-    none.title = 'Seulement les dégâts posés à la main (touche E)';
+    none.textContent = 'No hazard';
+    none.title = 'Only damage set by hand (E key)';
     none.addEventListener('click', () => this.selectKind(null));
     this.kindsBox.appendChild(none);
   }
@@ -211,8 +212,7 @@ export class DisasterPanel {
     if (!kind) {
       this.magField.style.display = 'none';
       this.windField.style.display = 'none';
-      this.blurb.textContent =
-        'Aucun aléa : seulement les dégâts posés à la main. E, puis clic sur les bâtiments.';
+      this.blurb.textContent = 'No hazard: only damage set by hand. Press E, then click buildings.';
       this.refresh();
       return;
     }
@@ -377,17 +377,32 @@ export class DisasterPanel {
   }
 
   /** Le sinistre en cours, en une ligne : le sous-titre d'une capture avant / après. */
+  /** Le sinistre en une ligne, pour l'en-tête : « EARTHQUAKE · EMS-98 7 ». */
+  private headline(scenario: Scenario | null): string {
+    const n = this.edits.size;
+    if (!scenario) return n ? `MANUAL DAMAGE · ${n}` : 'SIMULATOR';
+    const m = scenario.magnitude.toLocaleString('en-GB');
+    const amount: Record<DisasterKind, string> = {
+      seisme: `EMS-98 ${m}`,
+      explosion: `${m} t TNT`,
+      inondation: `${m} m`,
+      incendie: `STRENGTH ${m}`,
+    };
+    const hazard = `${DISASTERS[scenario.kind].label.toUpperCase()} · ${amount[scenario.kind]}`;
+    return n ? `${hazard} + ${n} BY HAND` : hazard;
+  }
+
   describe(): string {
     const parts: string[] = [];
     if (this.kind) {
       const meta = DISASTERS[this.kind];
       parts.push(
-        `${meta.label} · ${meta.unit} : ${this.scenario.magnitude.toLocaleString('fr-FR')}`,
+        `${meta.label} · ${meta.unit}: ${this.scenario.magnitude.toLocaleString('en-GB')}`,
       );
     }
     const n = this.edits.size;
-    if (n) parts.push(`${n} dégât${n > 1 ? 's' : ''} posé${n > 1 ? 's' : ''} à la main`);
-    return parts.join(' + ') || 'Sinistre';
+    if (n) parts.push(`${n} building${n > 1 ? 's' : ''} damaged by hand`);
+    return parts.join(' + ') || 'Disaster';
   }
 
   /** Déplie le panneau s'il est replié. */
@@ -409,12 +424,15 @@ export class DisasterPanel {
     const tl = this.player.current;
     const playing = this.player.playing;
 
-    put(this.tag, !tl ? 'INACTIF' : playing ? 'EN COURS' : this.player.finished ? 'BILAN' : 'ARMÉ');
+    // Dès qu'un sinistre est armé, l'en-tête dit lequel, plutôt que SIMULATOR.
+    put(this.title, tl ? this.headline(tl.scenario) : 'SIMULATOR');
+    this.title.classList.toggle('armed', !!tl);
+    put(this.tag, !tl ? 'IDLE' : playing ? 'RUNNING' : this.player.finished ? 'RESULT' : 'ARMED');
     this.tag.classList.toggle('on', !!tl && !playing);
     this.tag.classList.toggle('hot', playing);
     this.dot.className = playing ? 'dot live' : tl ? 'dot warn' : 'dot off';
 
-    this.playBtn.textContent = playing ? 'Pause' : this.player.finished ? 'Rejouer' : 'Lancer';
+    this.playBtn.textContent = playing ? 'Pause' : this.player.finished ? 'Replay' : 'Start';
     this.playBtn.classList.toggle('playing', playing);
     this.startBtn.disabled = !tl;
     this.endBtn.disabled = !tl;
@@ -430,10 +448,10 @@ export class DisasterPanel {
       put(
         this.note,
         n
-          ? `${n} dégât${n > 1 ? 's' : ''} posé${n > 1 ? 's' : ''} à la main. Lancer, ou Après pour voir.`
+          ? `${n} building${n > 1 ? 's' : ''} damaged by hand. Start, or After to see.`
           : this.kind
-            ? 'Choisir un aléa, puis Lancer.'
-            : 'E, puis clic sur les bâtiments à endommager.',
+            ? 'Choose a hazard, then Start.'
+            : 'Press E, then click the buildings to damage.',
       );
       this.note.className = 'dis-note';
       return;
@@ -452,19 +470,19 @@ export class DisasterPanel {
 
     if (playing) {
       this.note.className = 'dis-note hot';
-      put(this.note, `${this.kind ? DISASTERS[this.kind].label : 'Sinistre'} en cours…`);
+      put(this.note, `${this.kind ? DISASTERS[this.kind].label : 'Disaster'} in progress…`);
     } else if (this.player.finished) {
       this.note.className = 'dis-note ok';
-      const byHand = this.edits.size ? `, dont ${this.edits.size} à la main` : '';
+      const byHand = this.edits.size ? `, ${this.edits.size} of them by hand` : '';
       put(
         this.note,
-        `Bilan : ${tl.affected} bâtiment${tl.affected > 1 ? 's' : ''} touché${
-          tl.affected > 1 ? 's' : ''
-        } sur ${this.city.buildings.length}${byHand}.`,
+        `Result: ${tl.affected} building${tl.affected > 1 ? 's' : ''} hit out of ${
+          this.city.buildings.length
+        }${byHand}.`,
       );
     } else {
       this.note.className = 'dis-note';
-      put(this.note, `${tl.events.length} événements prévus. Avant / Après pour comparer.`);
+      put(this.note, `${tl.events.length} events planned. Before / After to compare.`);
     }
   }
 

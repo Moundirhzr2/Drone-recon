@@ -110,37 +110,37 @@ export function parseScenarioFile(text: string, city: City): ParsedScenario {
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error('ce n’est pas un fichier JSON');
+    throw new Error('this is not a JSON file');
   }
   const f = data as Partial<ScenarioFile>;
   if (!f || typeof f !== 'object' || f.format !== SCENARIO_FORMAT) {
-    throw new Error('ce n’est pas un scénario Drone Recon');
+    throw new Error('this is not a Drone Recon scenario');
   }
   if (typeof f.version !== 'number' || f.version > SCENARIO_VERSION) {
-    throw new Error('version de scénario trop récente pour ce simulateur');
+    throw new Error('scenario version too recent for this simulator');
   }
-  if (!Array.isArray(f.buildings)) throw new Error('liste de bâtiments absente');
+  if (!Array.isArray(f.buildings)) throw new Error('building list missing');
 
   if (
     f.city &&
     Math.abs(f.city.lat - city.center.lat) + Math.abs(f.city.lon - city.center.lon) > 0.01
   ) {
-    throw new Error(`scénario fait pour une autre ville (${f.city.name ?? 'inconnue'})`);
+    throw new Error(`scenario made for another city (${f.city.name ?? 'unknown'})`);
   }
 
   let hazard: Scenario | null = null;
   if (f.hazard) {
     const h = f.hazard;
-    if (!KINDS.includes(h.kind)) throw new Error(`aléa inconnu : ${String(h.kind)}`);
+    if (!KINDS.includes(h.kind)) throw new Error(`unknown hazard: ${String(h.kind)}`);
     const meta = DISASTERS[h.kind];
     const numbers = [h.magnitude, h.east, h.north, h.windFrom, h.seed, h.duration];
     if (numbers.some((v) => typeof v !== 'number' || !Number.isFinite(v))) {
-      throw new Error('réglages de l’aléa incomplets');
+      throw new Error('incomplete hazard settings');
     }
     if (h.magnitude < meta.min || h.magnitude > meta.max) {
-      const fr = (v: number) => v.toLocaleString('fr-FR');
+      const fr = (v: number) => v.toLocaleString('en-GB');
       throw new Error(
-        `${meta.unit} hors limites : ${fr(h.magnitude)} (de ${fr(meta.min)} à ${fr(meta.max)})`,
+        `${meta.unit} out of range: ${fr(h.magnitude)} (from ${fr(meta.min)} to ${fr(meta.max)})`,
       );
     }
     hazard = {
@@ -165,7 +165,7 @@ export function parseScenarioFile(text: string, city: City): ParsedScenario {
   let missing = 0;
   for (const entry of f.buildings) {
     if (!entry || typeof entry.id !== 'string' || !DAMAGE_ORDER.includes(entry.state)) {
-      throw new Error('bâtiment mal décrit dans la liste');
+      throw new Error('badly described building in the list');
     }
     const id = lookup.get(entry.id);
     if (id) edits.set(id, entry.state);
@@ -182,7 +182,7 @@ export function parseScenarioFile(text: string, city: City): ParsedScenario {
     file: {
       format: SCENARIO_FORMAT,
       version: f.version,
-      name: typeof f.name === 'string' && f.name.trim() ? f.name.trim() : 'Scénario sans nom',
+      name: typeof f.name === 'string' && f.name.trim() ? f.name.trim() : 'Untitled scenario',
       description: typeof f.description === 'string' ? f.description : undefined,
       createdAt: typeof f.createdAt === 'string' ? f.createdAt : '',
       city: f.city ?? { name: city.name, lon: city.center.lon, lat: city.center.lat },
@@ -204,7 +204,7 @@ export function scenarioFileName(name: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 60);
-  return `scenario-${slug || 'sans-nom'}.json`;
+  return `scenario-${slug || 'untitled'}.json`;
 }
 
 /** Propose le fichier au téléchargement. */

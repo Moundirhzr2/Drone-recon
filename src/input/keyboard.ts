@@ -44,6 +44,13 @@ export class KeyboardControl implements ControlSource {
     // Pendant la saisie d'un texte (le nom d'un scénario), les lettres sont du
     // texte, pas des commandes.
     if (e.target instanceof HTMLElement && e.target.matches('input[type="text"], textarea')) return;
+    // « ? » : l'aide du clavier. On lit le caractère, pas la position : sur
+    // AZERTY, c'est Maj + la touche de la virgule, dont le code est `KeyM`, et
+    // elle changerait le rendu si on la laissait passer.
+    if (e.key === '?') {
+      emit('help:toggle');
+      return;
+    }
     if (AXES[e.code]) {
       this.down.add(e.code);
       e.preventDefault();
@@ -75,6 +82,10 @@ export class KeyboardControl implements ControlSource {
         break;
       case 'KeyC':
         emit('view:toggle-fpv');
+        break;
+      // T comme « top » : la vue principale regarde le sol, à la verticale.
+      case 'KeyT':
+        emit('view:toggle-nadir');
         break;
       case 'KeyI':
         emit('view:toggle-hud');

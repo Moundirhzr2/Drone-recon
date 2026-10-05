@@ -32,9 +32,11 @@ Les commandes sont dans la [notice de `ml/`](../ml/README.md).
 La validation est toujours séparée **par emplacement**, jamais par image :
 mélanger les images d'une même rue entre entraînement et validation ferait
 valider le modèle sur des rues qu'il a déjà vues. La classe « fissuré » est
-fusionnée avec « intact » : dans la ville dessinée, un bâtiment fissuré est
-rendu exactement comme un intact, et demander au modèle de les distinguer
-reviendrait à lui apprendre à deviner.
+fusionnée avec « intact » : quand ces jeux ont été produits, un bâtiment
+fissuré était rendu exactement comme un intact, et demander au modèle de les
+distinguer serait revenu à lui apprendre à deviner. Les fissures sont
+dessinées depuis (voir [simulateur](simulateur.md#ce-quon-voit)) : un nouveau
+jeu de données permettrait d'entraîner cette classe.
 
 Le modèle est YOLO11n, le plus petit des modèles YOLO récents (2,6 millions de
 paramètres), parti de poids préentraînés sur COCO. Il tient dans les 4 Go
@@ -216,8 +218,8 @@ d'utilisation l'interdisent, et le modèle n'a jamais vu ces images.
   sinistre jamais vu reste à tester.
 - **Entre 40 et 90 m.** Au-delà de 15 m hors de cette plage, le rapport
   signale que les bâtiments n'ont plus la taille que le modèle connaît.
-- **Pas de fissures.** Ce rendu ne les montre pas, le modèle ne les cherche
-  donc pas, et le rapport les compte comme intactes.
+- **Pas de fissures.** Le modèle a été entraîné avant qu'elles soient
+  dessinées : il ne les cherche pas, et le rapport les compte comme intactes.
 - **Un léger retard.** Les boîtes affichées sont celles de la dernière analyse
   terminée, soit une fraction de seconde de retard sur l'image.
 

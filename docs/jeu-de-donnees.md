@@ -16,7 +16,7 @@ cap tirés au hasard.
 2. Appuyer sur `J` (ou `Maj+J`), puis choisir un dossier. Un sous-dossier
    `drone-recon-<date>-<heure>` (ou `drone-recon-varie-…`) y est créé.
 3. Laisser la fenêtre visible : le navigateur suspend les pages masquées. La
-   progression s'affiche dans le panneau de pilotage. Un nouvel appui sur `J`
+   progression s'affiche au-dessus des raccourcis, en bas de l'écran. Un nouvel appui sur `J`
    arrête l'export ; les images déjà prises sont conservées, avec leurs
    annotations.
 
@@ -118,9 +118,10 @@ réutilisation est libre, à condition de citer la source.
 
 - **Ce sont des images de synthèse.** Un modèle entraîné ici devra être validé
   sur de vraies images de drone.
-- **La classe `cracked` n'a pas de signature visuelle** : la ville dessinée
-  représente un bâtiment fissuré comme un bâtiment intact. On peut la fusionner
-  avec `intact`, ou l'écarter.
+- **La classe `cracked` a une signature discrète** : tuiles déplacées et
+  quelques trous sur les toits, fissures fines sur les façades, qu'une vue
+  verticale ne montre presque pas. Les jeux produits avant ces dessins la
+  rendaient comme `intact`, avec laquelle on peut la fusionner.
 - **Fumée, flammes et eau sont masquées** pendant la prise de vue.
 - **Les occultations entre bâtiments sont ignorées**, et la photographie
   aérienne laisse parfois voir, autour d'une ruine, le toit d'origine.

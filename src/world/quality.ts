@@ -82,9 +82,9 @@ export interface QualitySettings {
 }
 
 export const QUALITY_LABEL: Record<QualityName, string> = {
-  fluide: 'fluide',
-  equilibre: 'équilibrée',
-  beau: 'haute',
+  fluide: 'smooth',
+  equilibre: 'balanced',
+  beau: 'high',
 };
 
 const PROFILES: Record<QualityName, QualitySettings> = {
@@ -329,19 +329,19 @@ export class QualityGovernor {
     if (q.shadows) {
       q.shadows = false;
       this.viewer.shadows = false;
-      dropped = 'ombres coupées';
+      dropped = 'shadows off';
     } else if (q.msaa > 1) {
       q.msaa = 1;
       scene.msaaSamples = 1;
-      dropped = 'anticrénelage matériel coupé';
+      dropped = 'hardware anti-aliasing off';
     } else if (q.groundAtmosphere) {
       q.groundAtmosphere = false;
       scene.globe.showGroundAtmosphere = false;
-      dropped = 'brume au sol coupée';
+      dropped = 'ground haze off';
     } else if (q.fxaa) {
       q.fxaa = false;
       scene.postProcessStages.fxaa.enabled = false;
-      dropped = 'lissage coupé';
+      dropped = 'smoothing off';
     }
     if (dropped) console.info(`[perf] ${Math.round(fps)} img/s à l'échelle minimale — ${dropped}`);
     return dropped;

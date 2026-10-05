@@ -128,7 +128,7 @@ export class HandControl implements ControlSource {
   /** Démarre la webcam et charge le modèle. */
   async start(): Promise<void> {
     if (this.running) return;
-    say('Ouverture de la caméra…');
+    say('Opening the camera…');
 
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
@@ -136,7 +136,7 @@ export class HandControl implements ControlSource {
         audio: false,
       });
     } catch {
-      say('Caméra refusée ou indisponible — pilotage clavier maintenu', 'err');
+      say('Camera denied or unavailable — keyboard control kept', 'err');
       return;
     }
 
@@ -145,18 +145,18 @@ export class HandControl implements ControlSource {
 
     if (!this.vision) {
       try {
-        say('Chargement d’OpenCV…');
+        say('Loading OpenCV…');
         this.vision = await WebcamVision.create();
       } catch (err) {
         // Sans OpenCV, le pilotage reste possible, sans mesure ni dessin.
         console.error('[mains] OpenCV indisponible', err);
-        say('OpenCV indisponible — image de la webcam non traitée', 'err');
+        say('OpenCV unavailable — webcam image not processed', 'err');
       }
     }
 
     if (!this.landmarker) {
       try {
-        say('Chargement du modèle de détection…');
+        say('Loading the detection model…');
         const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE.wasm);
         this.landmarker = await HandLandmarker.createFromOptions(vision, {
           baseOptions: { modelAssetPath: MEDIAPIPE.model, delegate: 'GPU' },
@@ -168,7 +168,7 @@ export class HandControl implements ControlSource {
         });
       } catch (err) {
         console.error(err);
-        say('Modèle indisponible — vérifier la connexion réseau', 'err');
+        say('Model unavailable — check the network connection', 'err');
         this.stop();
         return;
       }
@@ -197,7 +197,7 @@ export class HandControl implements ControlSource {
   async toggle(): Promise<void> {
     if (this.running) {
       this.stop();
-      say('Pilotage gestuel coupé');
+      say('Hand piloting off');
     } else {
       await this.start();
     }
@@ -213,7 +213,7 @@ export class HandControl implements ControlSource {
       this.filters[side].x.reset();
       this.filters[side].y.reset();
     }
-    say('Calibrage : mains ouvertes, au centre, immobiles…');
+    say('Calibrating: hands open, centred and still…');
   }
 
   // ------------------------------------------------------------------
@@ -260,8 +260,8 @@ export class HandControl implements ControlSource {
     if (correcting === this.wasCorrecting) return;
     this.wasCorrecting = correcting;
     if (correcting)
-      say('Pièce sombre : image corrigée par OpenCV — éclairez si la main se perd', 'err');
-    else say('Éclairage suffisant : correction coupée', 'ok');
+      say('Dark room: image corrected by OpenCV — add light if a hand is lost', 'err');
+    else say('Enough light: correction off', 'ok');
   }
 
   private consume(result: HandLandmarkerResult, ts: number): void {
@@ -334,9 +334,9 @@ export class HandControl implements ControlSource {
       ok++;
     }
 
-    if (ok === 2) say('Calibrage terminé — deux mains actives', 'ok');
-    else if (ok === 1) say('Une seule main calibrée — axes partiels', 'err');
-    else say('Aucune main vue — recommencer avec K', 'err');
+    if (ok === 2) say('Calibration done — both hands active', 'ok');
+    else if (ok === 1) say('Only one hand calibrated — partial axes', 'err');
+    else say('No hand seen — try again with K', 'err');
   }
 
   /**
@@ -408,7 +408,7 @@ export class HandControl implements ControlSource {
     if (bothFists !== this.holdActive) {
       this.holdActive = bothFists;
       emit('drone:hold', bothFists);
-      if (bothFists) say('Stabilisation — poings fermés', 'ok');
+      if (bothFists) say('Hold — fists closed', 'ok');
     }
   }
 
@@ -449,34 +449,28 @@ export class HandControl implements ControlSource {
    * texte d'OpenCV ne connaît que l'ASCII.
    */
   private commandLines(): string[] {
-    if (this.calibrating) return ['CALIBRAGE : MAINS AU CENTRE'];
-    if (this.holdActive) return ['STABILISE : POINGS FERMES'];
+    if (this.calibrating) return ['CALIBRATING: HANDS IN CENTRE'];
+    if (this.holdActive) return ['HOLD: FISTS CLOSED'];
     const v = this.vector;
     const word = (value: number, plus: string, minus: string) =>
       value > 0 ? plus : value < 0 ? minus : '';
-    const describe = (words: string[]) => words.filter(Boolean).join(' + ') || 'NEUTRE';
+    const describe = (words: string[]) => words.filter(Boolean).join(' + ') || 'NEUTRAL';
     const lines: string[] = [];
     const left = this.current.gauche;
     const right = this.current.droite;
     if (left) {
       const action = left.pinching
         ? 'DIAGNOSTIC'
-        : describe([
-            word(v?.throttle ?? 0, 'MONTE', 'DESCEND'),
-            word(v?.yaw ?? 0, 'TOURNE D', 'TOURNE G'),
-          ]);
-      lines.push(`G  ${action}`);
+        : describe([word(v?.throttle ?? 0, 'UP', 'DOWN'), word(v?.yaw ?? 0, 'TURN R', 'TURN L')]);
+      lines.push(`L  ${action}`);
     }
     if (right) {
       const action = right.pinching
         ? 'PHOTO'
-        : describe([
-            word(v?.pitch ?? 0, 'AVANCE', 'RECULE'),
-            word(v?.roll ?? 0, 'DROITE', 'GAUCHE'),
-          ]);
-      lines.push(`D  ${action}`);
+        : describe([word(v?.pitch ?? 0, 'FORWARD', 'BACK'), word(v?.roll ?? 0, 'RIGHT', 'LEFT')]);
+      lines.push(`R  ${action}`);
     }
-    return lines.length ? lines : ['AUCUNE MAIN : STATIONNAIRE'];
+    return lines.length ? lines : ['NO HAND: HOVERING'];
   }
 
   /** Résumé pour le HUD. */

@@ -79,7 +79,8 @@ plus de pixels** qu'un petit panneau de test. Le simulateur vise donc une cadenc
 1. il ajuste d'abord l'échelle de rendu, entre 0,4 et 1 ;
 2. si la cadence manque encore à l'échelle minimale, il coupe une option, la plus
    chère d'abord : les ombres si on les a réactivées, puis le MSAA, la brume au
-   sol, FXAA. Le pilote en est averti dans le panneau de pilotage.
+   sol, FXAA. Le pilote en est averti par un message au bas de l'écran, et le
+   bouton HD passe à l'orange.
 
 Il ne rétablit jamais de lui-même une option coupée : mieux vaut une image un peu
 moins riche qu'une qualité qui clignote. L'ajustement a lieu au plus toutes les

@@ -566,7 +566,11 @@ export class DisasterPlayer {
     // Reculer impose de repartir de l'état initial : les événements ne sont
     // pas réversibles un par un (un bâtiment effondré ne se souvient pas de sa
     // fissure précédente). Rejouer depuis zéro reste instantané.
-    if (target < this.cursor) {
+    // Le retour à l'état initial change la géométrie à lui seul, même si aucun
+    // événement ne tombe avant l'instant visé : les dégâts posés à la main ne
+    // commencent qu'à 0,25 s.
+    const rewound = target < this.cursor;
+    if (rewound) {
       this.restore();
       this.applied = 0;
     }
@@ -580,7 +584,7 @@ export class DisasterPlayer {
       if (this.recentSpan > 0) this.recent.push(e);
       this.applied++;
     }
-    return this.applied !== start;
+    return rewound || this.applied !== start;
   }
 
   /** Saute directement à la fin : la vue « après ». */

@@ -140,14 +140,12 @@ export async function runTour(ctx: TourContext): Promise<void> {
   };
 
   const temple = city.buildings.find((b) => b.name === 'Temple Saint-Étienne');
-  const count = city.buildings.length.toLocaleString('fr-FR');
+  const count = city.buildings.length.toLocaleString('en-GB');
 
   const steps: Array<() => Promise<void>> = [
     async () => {
       place(-199, -123, 95, 30);
-      say(
-        `1/6 — Le centre réel de Mulhouse : ${count} bâtiments de l'IGN autour de la place de la Réunion`,
-      );
+      say(`1/6 — The real centre of Mulhouse: ${count} IGN buildings around Place de la Réunion`);
       await tilesLoaded();
       await animate(9000, (k) => {
         drone.heading = 30 + 30 * k;
@@ -167,11 +165,11 @@ export async function runTour(ctx: TourContext): Promise<void> {
         );
       };
       orbit(200);
-      const where = temple ? 'Tour du temple Saint-Étienne' : 'Tour du centre-ville';
+      const where = temple ? 'Around the Saint-Étienne church' : 'Around the city centre';
       say(
         ctx.photoreal
-          ? `2/6 — ${where} : la ville telle qu'elle est, relevée en 3D, posée sur le relief de l'IGN`
-          : `2/6 — ${where} : façades et toitures dessinées d'après l'époque, l'usage et la couverture que déclare l'IGN`,
+          ? `2/6 — ${where}: the city as it is, surveyed in 3D, set on the IGN relief`
+          : `2/6 — ${where}: façades and roofs drawn from the era, use and roofing declared by IGN`,
       );
       await tilesLoaded();
       await wait(800);
@@ -180,7 +178,7 @@ export async function runTour(ctx: TourContext): Promise<void> {
     async () => {
       const { east, north } = defaultScenario('explosion');
       face(east, north, 325, 90, 45);
-      say("3/6 — Explosion d'une tonne de TNT : éclair, boule de feu, onde de choc, débris, fumée");
+      say('3/6 — One-tonne TNT explosion: flash, fireball, shock wave, debris, smoke');
       await tilesLoaded();
       await wait(1500);
       await play(EXPLOSION, 1);
@@ -190,7 +188,7 @@ export async function runTour(ctx: TourContext): Promise<void> {
       // La crue n'a pas de foyer : c'est le relief qui décide où l'eau monte.
       place(-40, -60, 110, 40);
       say(
-        "4/6 — Crue de 3 m : l'eau monte à niveau plat et remplit d'abord le point bas du relief (×3)",
+        '4/6 — 3 m flood: the water rises level and fills the lowest point of the relief first (×3)',
       );
       await tilesLoaded();
       await wait(1000);
@@ -200,9 +198,7 @@ export async function runTour(ctx: TourContext): Promise<void> {
       panel.cancel();
       const { east, north } = defaultScenario('incendie');
       face(east, north, 225, 75, 45);
-      say(
-        '5/6 — Incendie poussé par le vent de sud-ouest : flammes, fumée, façades calcinées (×3)',
-      );
+      say('5/6 — Fire driven by a south-west wind: flames, smoke, charred façades (×3)');
       await tilesLoaded();
       await wait(1000);
       await play(INCENDIE, 3);
@@ -212,7 +208,7 @@ export async function runTour(ctx: TourContext): Promise<void> {
       const { east, north } = defaultScenario('seisme');
       face(east, north, 283, 80, 45);
       say(
-        "6/6 — Séisme d'intensité VII, celle estimée à Mulhouse en 1356 : secousse, fissures, effondrements",
+        '6/6 — Intensity VII earthquake, as estimated in Mulhouse in 1356: shaking, cracks, collapses',
       );
       await tilesLoaded();
       await wait(1000);
@@ -221,14 +217,14 @@ export async function runTour(ctx: TourContext): Promise<void> {
     async () => {
       if (!ctx.diagnostic()) emit('view:toggle-diagnostic');
       say(
-        "Bilan en vue diagnostique : chaque bâtiment classé. À vous de piloter — les touches sont en bas de l'écran.",
+        'Result in diagnostic view: every building classified. Your turn to fly — the keys are at the bottom of the screen.',
       );
       await wait(12000);
     },
   ];
 
   try {
-    say("Visite guidée — elle démarre dès que la page s'affiche");
+    say('Guided tour — it starts as soon as the page shows');
     while (alive() && (await presentedFps()) < 25) {
       // Page masquée : rien n'est présenté à l'écran, on attend.
     }

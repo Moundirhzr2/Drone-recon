@@ -62,7 +62,7 @@ async function init(url: string): Promise<'webgpu' | 'wasm'> {
 function toTensor(image: ImageBitmap): ort.Tensor {
   if (!pixels) {
     pixels = new OffscreenCanvas(size, size).getContext('2d', { willReadFrequently: true });
-    if (!pixels) throw new Error('Canvas hors écran indisponible');
+    if (!pixels) throw new Error('offscreen canvas unavailable');
   }
   pixels.drawImage(image, 0, 0, size, size);
   image.close();
@@ -92,7 +92,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
   if (!session) {
     msg.image.close();
-    reply({ type: 'error', id: msg.id, message: 'Modèle non chargé' });
+    reply({ type: 'error', id: msg.id, message: 'model not loaded' });
     return;
   }
   try {

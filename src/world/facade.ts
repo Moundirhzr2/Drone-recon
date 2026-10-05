@@ -686,6 +686,114 @@ vec3 interiorWall(vec3 tint) {
   return c * (tint / RUBBLE_TINT);
 }
 
+// --- Degats de seisme ---------------------------------------------------------
+//
+// Un batiment fissure reste debout : sa geometrie est celle du batiment intact,
+// construite une fois pour toutes. Ses degats sont donc peints ici, a la
+// volee, d'apres la gravite que porte l'alpha d'instance (voir colorFor, render.ts).
+
+// Distance d'un point a un segment.
+float segDist(vec2 p, vec2 a, vec2 b) {
+  vec2 pa = p - a;
+  vec2 ba = b - a;
+  float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return length(pa - ba * h);
+}
+
+// Facade fissuree. Un seisme cisaille la maconnerie : des fissures en X dans
+// chaque travee d'un etage, qui suivent les joints en escalier ; parfois une
+// fissure horizontale au droit d'un plancher ; des plaques d'enduit tombees,
+// qui laissent voir la pierre ou la brique ; de la poussiere au pied du mur.
+vec3 crackedFacade(vec3 c, float severity) {
+  vec2 m = vec2(v_st.s * v_surf.y, v_st.t * v_surf.z);
+  float sq = floor(v_facade.z * 997.0 + 0.5);
+  vec2 salt = vec2(sq * 0.1731, sq * 0.0719);
+  float aa = max(fx, fy);
+
+  // Enduit tombe par petites plaques : dessous, les rangs de la maconnerie.
+  float spall = vnoise(m * 0.9 + salt * 3.0) * 0.6 + vnoise(m * 3.5 + salt) * 0.4;
+  float st = 0.84 - 0.08 * severity;
+  float spalled = smoothstep(st, st + 0.01 + aa * 0.05, spall);
+  float rim = smoothstep(st - 0.025, st, spall) * (1.0 - spalled);
+  vec3 masonry = v_facade.x < 0.5 ? vec3(0.55, 0.5, 0.43) : vec3(0.56, 0.38, 0.3);
+  float courses = mix(0.5, step(0.82, fract(m.y / 0.075)), detailP(0.075, 0.075));
+  masonry *= (0.88 + 0.2 * vnoise(m * 7.0 + salt)) * (1.0 - 0.25 * courses);
+  c *= 1.0 - 0.22 * rim;
+  c = mix(c, masonry, spalled);
+
+  // Fissures, cellule par cellule : une travee de 3,4 m sur un etage de 3,2 m.
+  // Droites dans l'ensemble, brisees de pres par les joints.
+  vec2 size = vec2(3.4, 3.2);
+  vec2 id = floor(m / size);
+  vec2 f = m - id * size;
+  vec2 jag = vec2(vnoise(m * 7.0 + salt) - 0.5, vnoise(m * 7.0 + salt + 9.7) - 0.5) * 0.09;
+  vec2 p = f + jag;
+  float d = 1e3;
+  if (hash21(id + salt) < 0.12 + 0.35 * severity) {
+    d = segDist(p, vec2(0.3, 0.35), vec2(size.x - 0.4, size.y - 0.3));
+  }
+  if (hash21(id + salt + 4.3) < 0.05 + 0.25 * severity) {
+    d = min(d, segDist(p, vec2(size.x - 0.3, 0.3), vec2(0.4, size.y - 0.4)));
+  }
+  if (hash21(id + salt + 8.1) < 0.12 * severity) {
+    d = min(d, segDist(p, vec2(0.2, 0.12), vec2(size.x * (0.4 + 0.5 * hash21(id + salt + 2.2)), 0.12)));
+  }
+  float w = 0.006 + 0.012 * severity;
+  float line = 1.0 - smoothstep(w, w + aa, d);
+  // Plus fine qu'un pixel, la fissure s'estompe au lieu de scintiller.
+  line *= clamp(2.5 * w / aa, 0.0, 1.0);
+  c = mix(c, vec3(0.08, 0.07, 0.06), 0.85 * line);
+
+  float low = 1.0 - smoothstep(0.0, 1.0, m.y);
+  return mix(c, vec3(0.62, 0.59, 0.54), 0.2 * severity * low);
+}
+
+// Facade abimee par une crue : la maconnerie imbibee, plus sombre, jusqu'a la
+// hauteur atteinte par l'eau, une laisse de boue a cette hauteur, et des
+// coulures de limon plus bas. Plus le dommage est grave, plus l'eau est montee.
+vec3 soakedFacade(vec3 c, float severity) {
+  vec2 m = vec2(v_st.s * v_surf.y, v_st.t * v_surf.z);
+  float sq = floor(v_facade.z * 997.0 + 0.5);
+  vec2 salt = vec2(sq * 0.1731, sq * 0.0719);
+  float line = 0.7 + 1.9 * severity + 0.12 * (vnoise(vec2(m.x * 0.6, 0.0) + salt) - 0.5);
+  float below = 1.0 - smoothstep(line - 0.04, line + 0.04, m.y);
+  // Imbibee : plus sombre et plus brune, davantage vers le bas.
+  vec3 wet = c * vec3(0.62, 0.58, 0.5);
+  float low = 1.0 - smoothstep(0.0, line, m.y);
+  c = mix(c, wet, below * (0.65 + 0.3 * low));
+  // Laisse de crue : un trait de limon sombre a la hauteur de l'eau.
+  float tide = 1.0 - smoothstep(0.03, 0.09, abs(m.y - line));
+  c = mix(c, vec3(0.3, 0.25, 0.17), 0.7 * tide * detailP(0.2, 0.2));
+  // Coulures de limon, sous la laisse.
+  float runs = vnoise(vec2(m.x * 1.6, m.y * 0.25) + salt * 4.0);
+  c = mix(c, vec3(0.45, 0.39, 0.28), below * 0.35 * smoothstep(0.55, 0.85, runs));
+  return c;
+}
+
+// Toiture d'un batiment fissure, r en metres sur le toit. En pente : surtout
+// des tuiles glissees ou cassees, par plaques, et quelques trous ou l'on voit
+// le voligeage. En terrasse : des gravats epars.
+vec3 damagedRoof(vec3 c, vec2 r, float severity, float pitched, vec2 salt) {
+  vec2 w = fwidth(r);
+  float aa = max(w.x, w.y);
+  // Tuiles deplacees : des plaques ou la couverture est en desordre.
+  float messy = smoothstep(0.66 - 0.12 * severity, 0.72 - 0.12 * severity, vnoise(r * 0.3 + salt * 5.0));
+  float jitter = mix(0.5, hash21(floor(r * vec2(3.3, 2.6)) + salt), 1.0 - smoothstep(0.25, 0.6, aa * 3.3));
+  c = mix(c, c * (0.78 + 0.45 * jitter), 0.7 * messy);
+  // Quelques trous, plus nombreux quand le dommage est grave.
+  float n = vnoise(r * 0.7 + salt) * 0.6 + vnoise(r * 2.2 + salt * 2.0) * 0.4;
+  float th = 0.86 - 0.07 * severity;
+  float hole = smoothstep(th, th + 0.015 + aa * 0.05, n);
+  if (pitched > 0.5) {
+    float lathFade = 1.0 - smoothstep(0.25, 0.6, fwidth(r.y / 0.35));
+    float lath = mix(0.3, step(0.7, fract(r.y / 0.35)), lathFade);
+    vec3 inside = mix(vec3(0.11, 0.085, 0.065), vec3(0.34, 0.26, 0.18), 0.55 * lath);
+    return mix(c, inside, hole);
+  }
+  vec3 debris = vec3(0.58, 0.55, 0.5) * (0.8 + 0.4 * vnoise(r * 4.0 + salt));
+  return mix(c, debris, 0.85 * hole);
+}
+
 void main()
 {
   vec4 base = czm_gammaCorrect(v_color);
@@ -699,13 +807,23 @@ void main()
   // Alpha entre 0,75 et 0,95 : un batiment incendie. Sa geometrie reste celle
   // du batiment debout, construite une fois pour toutes ; c'est ici que ses
   // facades deviennent calcinees.
-  if (style < 0.5 && textured > 0.5 && v_color.a < 0.95) style = 4.0;
+  if (style < 0.5 && textured > 0.5 && v_color.a > 0.83 && v_color.a < 0.88) style = 4.0;
+  // Alpha entre 0,755 et 0,83 : une facade abimee par une crue.
+  float soakSeverity = style < 0.5 && textured > 0.5 && v_color.a > 0.755 && v_color.a < 0.83
+    ? clamp((v_color.a - 0.76) / 0.05, 0.0, 1.0)
+    : -1.0;
+  // Alpha entre 0,88 et 0,95 : un batiment fissure, sa gravite de 0 a 1.
+  float crackSeverity = textured > 0.5 && v_color.a > 0.88 && v_color.a < 0.95
+    ? clamp((v_color.a - 0.89) / 0.05, 0.0, 1.0)
+    : -1.0;
   // Alpha entre 0,95 et 0,99 : le pan de facade d'une ruine.
   ruinedFacade = style < 0.5 && textured > 0.5 && v_color.a < 0.99 ? 1.0 : 0.0;
 
   if (style < 0.5) {
     // --- FACADE ---------------------------------------------------------
     tex = facade(tex);
+    if (crackSeverity >= 0.0) tex = crackedFacade(tex, crackSeverity);
+    if (soakSeverity >= 0.0) tex = soakedFacade(tex, soakSeverity);
     if (ruinedFacade > 0.5) {
       // Poussiere de l'effondrement : epaisse au pied du mur, en coulures
       // plus haut.
@@ -727,6 +845,9 @@ void main()
     float grain = max(3.0, v_surf.y * 0.5);
     float dg = detail(v_st * grain);
     tex *= 0.93 + 0.11 * mix(0.5, hash21(floor(v_st * grain)), dg);
+    if (crackSeverity >= 0.0) {
+      tex = damagedRoof(tex, v_st * max(v_surf.y, 4.0), crackSeverity, 1.0, vec2(v_facade.z * 31.0));
+    }
 
   } else if (style < 2.5) {
     // --- GRAVATS --------------------------------------------------------
@@ -740,6 +861,10 @@ void main()
   } else if (style > 4.5) {
     // --- TOITURE REELLE -------------------------------------------------
     tex = roofReal(tex);
+    if (crackSeverity >= 0.0) {
+      float pitched = step(9.5, floor(v_facade.z + 0.5));
+      tex = damagedRoof(tex, v_facade.xy, crackSeverity, pitched, vec2(v_facade.w * 173.0));
+    }
 
   } else if (style > 3.5) {
     // --- FACADE INCENDIEE -----------------------------------------------

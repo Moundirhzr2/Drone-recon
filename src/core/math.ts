@@ -39,7 +39,7 @@ export function groundDistance(lon1: number, lat1: number, lon2: number, lat2: n
 
 /** Formate un angle décimal en degrés / minutes / secondes. */
 export function toDMS(value: number, axis: 'lat' | 'lon'): string {
-  const hemi = axis === 'lat' ? (value >= 0 ? 'N' : 'S') : value >= 0 ? 'E' : 'O';
+  const hemi = axis === 'lat' ? (value >= 0 ? 'N' : 'S') : value >= 0 ? 'E' : 'W';
   const abs = Math.abs(value);
   const d = Math.floor(abs);
   const mFloat = (abs - d) * 60;

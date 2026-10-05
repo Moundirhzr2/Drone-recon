@@ -146,6 +146,8 @@ const DUST_GAIN = 2.5;
  * reçoit : la même valeur à l'écran ressortait deux fois trop claire.
  */
 const DUST_TINT = new Cesium.Cartesian3(0.187, 0.159, 0.127);
+/** Débord de la carte des fissurés autour du contour IGN, en mètres. */
+const CRACK_MARGIN = 0.6;
 
 /**
  * Sous-sol (voir `underlayOf`) : profondeur sous le relief et pas de sa
@@ -208,12 +210,22 @@ float ruinsNoise(vec2 p) {
   );
 }
 
+float ruinsSegDist(vec2 p, vec2 a, vec2 b) {
+  vec2 pa = p - a;
+  vec2 ba = b - a;
+  float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return length(pa - ba * h);
+}
+
 void fragmentMain(FragmentInput fsInput, inout czm_modelMaterial material) {
   vec3 local = (u_eyeToLocal * vec4(fsInput.attributes.positionEC, 1.0)).xyz;
   // Orientation de la surface, que le relevé ne fournit pas : tirée des
   // dérivées de la position, avant tout branchement, où elles ne seraient
   // plus définies.
   vec3 facing = normalize(cross(dFdx(local), dFdy(local)));
+  // Taille d'un pixel sur la surface, en mètres : pour estomper les détails
+  // plus fins que lui.
+  float pixel = max(length(dFdx(local)), length(dFdy(local)));
   vec2 uv = (local.xy - u_extent.xy) / u_extent.zw;
   if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return;
   vec4 ruins = texture(u_ruins, uv);
@@ -245,6 +257,50 @@ void fragmentMain(FragmentInput fsInput, inout czm_modelMaterial material) {
     float soot = 0.55 + 0.25 * streaks + 0.2 * ruinsNoise(local.xy * 0.3 + local.z * 0.25);
     color *= 1.0 - ruins.g * clamp(soot, 0.0, 0.97);
   }
+  // Bâtiment fissuré par un séisme (seconde carte) : sur le toit, des tuiles
+  // déplacées par plaques et quelques trous ; sur les façades, des fissures
+  // en X par travée et par étage, et des plaques d'enduit tombées. La gravité
+  // règle le nombre de chacun.
+  vec4 dmg = texture(u_damage, uv);
+  if (dmg.r > 0.5) {
+    float sev = dmg.g;
+    float above = local.z - (u_heights.x + dmg.b * u_heights.y);
+    vec2 salt = vec2(dmg.g * 37.0 + dmg.b * 11.0, dmg.b * 53.0);
+    if (facing.z > 0.55 && above > 2.5) {
+      vec2 r = local.xy;
+      float messy = smoothstep(0.64 - 0.12 * sev, 0.7 - 0.12 * sev, ruinsNoise(r * 0.3 + salt * 5.0));
+      float jit = ruinsHash(floor(r * vec2(3.3, 2.6)) + salt);
+      color = mix(color, color * (0.72 + 0.56 * jit), 0.75 * messy);
+      float n = ruinsNoise(r * 0.9 + salt) * 0.55 + ruinsNoise(r * 2.6 + salt * 2.0) * 0.45;
+      float th = 0.89 - 0.05 * sev;
+      float hole = smoothstep(th, th + 0.015 + 0.05 * pixel, n);
+      color = mix(color, vec3(0.04, 0.03, 0.022), 0.9 * hole);
+    } else if (abs(facing.z) < 0.35 && above > 0.3) {
+      vec2 tang = normalize(vec2(-facing.y, facing.x) + 1e-5);
+      vec2 m = vec2(dot(local.xy, tang), above);
+      // Enduit tombé.
+      float spall = ruinsNoise(m * 0.9 + salt * 3.0) * 0.6 + ruinsNoise(m * 3.5 + salt) * 0.4;
+      float st = 0.82 - 0.08 * sev;
+      float spalled = smoothstep(st, st + 0.012 + 0.05 * pixel, spall);
+      color = mix(color, color * vec3(0.78, 0.66, 0.56), spalled);
+      // Fissures.
+      vec2 size = vec2(3.4, 3.2);
+      vec2 id = floor(m / size);
+      vec2 f = m - id * size;
+      vec2 jag = vec2(ruinsNoise(m * 7.0 + salt) - 0.5, ruinsNoise(m * 7.0 + salt + 9.7) - 0.5) * 0.09;
+      vec2 p = f + jag;
+      float d = 1e3;
+      if (ruinsHash(id + salt) < 0.15 + 0.4 * sev) {
+        d = ruinsSegDist(p, vec2(0.3, 0.35), vec2(size.x - 0.4, size.y - 0.3));
+      }
+      if (ruinsHash(id + salt + 4.3) < 0.06 + 0.3 * sev) {
+        d = min(d, ruinsSegDist(p, vec2(size.x - 0.3, 0.3), vec2(0.4, size.y - 0.4)));
+      }
+      float w = 0.012 + 0.02 * sev;
+      float line = (1.0 - smoothstep(w, w + pixel, d)) * clamp(2.5 * w / pixel, 0.0, 1.0);
+      color = mix(color, vec3(0.006, 0.005, 0.004), 0.85 * line);
+    }
+  }
   material.diffuse = color;
 }
 `;
@@ -265,6 +321,10 @@ export class PhotorealCity {
   /** Codage des hauteurs dans la carte : altitude du niveau 0, étendue. */
   private heights: Cesium.Cartesian2;
   private maskSize: { width: number; height: number };
+  /** Définition de la carte des bâtiments fissurés, moitié de celle des ruines. */
+  private damageSize: { width: number; height: number };
+  /** L'aléa en cours : une crue ne fissure pas, voir `setHazard`. */
+  private hazard: string | null = null;
   private metersPerPixel: number;
   /** Sous le relevé, de quoi arrêter le regard au travers des découpes. */
   private underlay: Cesium.Primitive;
@@ -327,6 +387,10 @@ export class PhotorealCity {
     const height = maxY - minY + 2 * pad;
     const metersPerPixel = Math.max(MASK_RESOLUTION, Math.max(width, height) / MASK_MAX);
     this.metersPerPixel = metersPerPixel;
+    this.damageSize = {
+      width: Math.ceil(width / (2 * metersPerPixel)),
+      height: Math.ceil(height / (2 * metersPerPixel)),
+    };
     this.maskSize = {
       width: Math.ceil(width / metersPerPixel),
       height: Math.ceil(height / metersPerPixel),
@@ -346,6 +410,15 @@ export class PhotorealCity {
         u_extent: { type: Cesium.UniformType.VEC4, value: this.extent },
         u_heights: { type: Cesium.UniformType.VEC2, value: this.heights },
         u_dust: { type: Cesium.UniformType.VEC3, value: DUST_TINT },
+        u_damage: {
+          type: Cesium.UniformType.SAMPLER_2D,
+          value: new Cesium.TextureUniform({
+            typedArray: new Uint8Array(this.damageSize.width * this.damageSize.height * 4),
+            width: this.damageSize.width,
+            height: this.damageSize.height,
+            repeat: false,
+          }),
+        },
         u_ruins: {
           type: Cesium.UniformType.SAMPLER_2D,
           value: new Cesium.TextureUniform({
@@ -424,6 +497,14 @@ export class PhotorealCity {
    * n'est redemandée qu'une fois toutes les 400 ms au plus, et jamais tant que
    * la précédente est en cours de dessin.
    */
+  /**
+   * L'aléa en cours. Un bâtiment fissuré par une crue ne montre pas de
+   * fissures : la trace de l'eau est sous l'eau.
+   */
+  setHazard(kind: string | null): void {
+    this.hazard = kind;
+  }
+
   sync(): void {
     if (this.drawing) {
       this.again = true;
@@ -440,7 +521,14 @@ export class PhotorealCity {
 
     const ruined = this.city.buildings.filter((b) => b.footprint && REDRAWN.has(b.state));
     const burnt = this.city.buildings.filter((b) => b.footprint && b.state === 'burnt');
-    const key = `${ruined.map((b) => b.id).join()}|${burnt.map((b) => b.id).join()}`;
+    // Fissurés par une crue, les bâtiments ne montrent pas de fissures.
+    const cracked =
+      this.hazard === 'inondation'
+        ? []
+        : this.city.buildings.filter((b) => b.footprint && b.state === 'cracked');
+    const key = `${ruined.map((b) => b.id).join()}|${burnt.map((b) => b.id).join()}|${cracked
+      .map((b) => b.id)
+      .join()}`;
     if (key === this.applied) return;
     this.applied = key;
     this.lastMask = performance.now();
@@ -474,6 +562,12 @@ export class PhotorealCity {
         eave: encode(b.baseHeight + b.height - (b.roofPitch ?? 0) / 2 + 0.5),
       })),
       burnt: burnt.map((b) => flat(b, SOOT_MARGIN)),
+      cracked: cracked.map((b) => ({
+        ring: flat(b, CRACK_MARGIN),
+        severity: Math.round(255 * Math.min(1, Math.max(0, (b.damage - 0.3) / 0.27))),
+        base: encode(b.baseHeight),
+      })),
+      damageSize: this.damageSize,
       dust: { spread: DUST_SPREAD / this.metersPerPixel, gain: DUST_GAIN },
     };
     this.drawing = true;
@@ -493,6 +587,15 @@ export class PhotorealCity {
           typedArray: new Uint8Array(result.pixels),
           width: this.maskSize.width,
           height: this.maskSize.height,
+          repeat: false,
+        }),
+      );
+      this.shader.setUniform(
+        'u_damage',
+        new Cesium.TextureUniform({
+          typedArray: new Uint8Array(result.damage),
+          width: this.damageSize.width,
+          height: this.damageSize.height,
           repeat: false,
         }),
       );

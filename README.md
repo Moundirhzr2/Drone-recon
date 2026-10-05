@@ -145,8 +145,12 @@ mains ouvertes et immobiles pendant les trois secondes de calibrage.
 
 ## Commandes
 
+À l'écran, une ligne rappelle les gestes du vol et de la capture ; `?` ouvre
+l'aide, avec toutes les touches rangées en quatre groupes.
+
 | Touche           | Effet                                                     |
 | ---------------- | --------------------------------------------------------- |
+| `?`              | afficher ou masquer l'aide du clavier                     |
 | `Z` `Q` `S` `D`  | avancer, reculer, translater (`W` `A` `S` `D` en QWERTY)  |
 | `↑` `↓`          | monter, descendre                                         |
 | `←` `→`          | pivoter                                                   |
@@ -155,6 +159,7 @@ mains ouvertes et immobiles pendant les trois secondes de calibrage.
 | `V`              | basculer entre vue brute et vue diagnostique              |
 | `M`              | changer de rendu : réaliste, fil de fer, scan             |
 | `C`              | vue embarquée ou caméra de suivi                          |
+| `T`              | vue nadir en grand : à la verticale du drone              |
 | `I`              | masquer ou afficher l'interface (aussi par son bouton)    |
 | `F`              | rétablir la qualité d'image et la fixer (bouton HD)       |
 | `H` / `K`        | activer le pilotage gestuel / le recalibrer               |
@@ -184,9 +189,11 @@ au-dessus.
 Pour se poser, il suffit de descendre jusqu'au contact (`↓`, ou main gauche
 vers le bas) : au sol, sur un toit, ou sur les gravats d'une ruine. Dans les
 derniers mètres, la descente ralentit d'elle-même. Posé, le drone coupe ses
-moteurs : l'étiquette de la télémétrie passe à `POSÉ`, les hélices s'arrêtent,
-et la ligne `SOUS DRONE`, hauteur au-dessus de ce qui est dessous, tombe à zéro.
-Remettre les gaz (`↑`, ou main gauche vers le haut) le fait redécoller.
+moteurs : l'étiquette de la télémétrie passe à `LANDED`, les hélices s'arrêtent,
+et la marge `CLEARANCE`, hauteur au-dessus de ce qui est dessous, tombe à zéro.
+Elle est dans le détail de la télémétrie, qu'un clic sur son en-tête déplie ; en
+vol, sous 2 m, elle s'affiche d'elle-même, en orange. Remettre les gaz (`↑`, ou
+main gauche vers le haut) le fait redécoller.
 
 Pour survoler puis se poser sur des débris : lancer un sinistre, ou poser des
 dégâts à la main (`E`), descendre au-dessus d'un bâtiment effondré, et se poser
@@ -197,7 +204,7 @@ les collisions lisent la forme des ruines dans le même code.
 
 `Espace`, ou un pincement de la main droite, enregistre deux images PNG :
 
-- `capture_2026-10-04_18-37-12_vue.png` : la vue du pilote, telle qu'à l'écran,
+- `capture_2026-10-04_18-37-12_view.png` : la vue du pilote, telle qu'à l'écran,
   sans l'interface ;
 - `capture_2026-10-04_18-37-12_nadir.png` : la photo verticale de la caméra
   nadir, qui rejoint aussi la galerie avec ses détections.
@@ -205,12 +212,24 @@ les collisions lisent la forme des ruines dans le même code.
 `Maj` + `Espace`, ou le bouton « Capturer avant / après » du simulateur, prend
 la paire avant / après du sinistre en cours, depuis le même point de vue : le
 drone se fige, la scène revient avant le sinistre, puis passe à son état final.
-Trois fichiers : `_avant.png`, `_apres.png`, et `_avant-apres.png` où les deux
-sont côte à côte.
+Chaque état est pris deux fois, dans la vue du pilote et à la verticale, et la
+vue verticale d'après reçoit le diagnostic du détecteur : ses cadres, une
+couleur par classe, en pointillés pour une fausse alerte, avec la précision et
+le rappel mesurés contre la vérité. Sept fichiers : `_before.png`, `_after.png`,
+`_before-after.png` où les deux sont côte à côte, `_before_nadir.png`,
+`_after_nadir.png`, `_diagnostic_nadir.png` et `_before-after_nadir.png`, la
+planche qui réunit les trois vues verticales : une étiquette sur chaque image,
+et un seul bandeau dessous, avec le sinistre, la position, la date, la précision
+et le rappel. La planche s'affiche aussi à l'écran ; un clic ou `Échap` la
+referme.
 
-Chaque image porte un bandeau : date et heure, position, hauteur au-dessus du
-sol, cap, et la source des données affichées. Un éclair et un message
-confirment l'enregistrement.
+`T`, ou l'icône d'agrandissement du panneau de la caméra nadir, passe la vue
+principale à la verticale du drone, le cap en haut de l'écran : ce que voit la
+caméra nadir, en plein écran. `T` ou `C` ramène à la vue précédente.
+
+Chaque image enregistrée seule porte un bandeau : date et heure, position,
+hauteur au-dessus du sol, cap, et la source des données affichées. Un éclair et
+un message confirment l'enregistrement.
 
 À la première capture faite au clavier, Chrome et Edge demandent dans quel
 dossier enregistrer ; les suivantes s'y écrivent sans question. Ailleurs, ou si
@@ -301,9 +320,9 @@ l'eau.
 
 - **Le détecteur entraîné n'a vu que des images de synthèse.** Il a appris sur
   la ville dessinée, entre 40 et 90 m de hauteur : il reste à le valider sur de
-  vraies images de drone. Il ne distingue pas un bâtiment fissuré, que ce
-  rendu dessine comme un intact. Le détecteur par défaut, lui, est simulé : il
-  n'analyse pas l'image, il bruite la vérité terrain.
+  vraies images de drone. Il a été entraîné avant que les bâtiments fissurés
+  soient dessinés comme tels : il ne les cherche pas. Le détecteur par défaut,
+  lui, est simulé : il n'analyse pas l'image, il bruite la vérité terrain.
 - **Dans la ville dessinée, les toits sont plats.** Chaque bâtiment est une
   extrusion de son contour : la couverture de son toit est dessinée d'après
   l'IGN, mais pas sa pente, ni la flèche du temple Saint-Étienne. La ville

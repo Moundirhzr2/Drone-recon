@@ -97,18 +97,18 @@ interface Pass {
 function describe(id: string, s: Scenario): string {
   const meta = DISASTERS[s.kind];
   const number = id.split('-')[1];
-  const parts = [`${meta.unit} ${s.magnitude.toLocaleString('fr-FR')}`];
+  const parts = [`${meta.unit} ${s.magnitude.toLocaleString('en-GB')}`];
   // La crue ne part pas d'un foyer, et seul l'incendie dépend du vent.
   const along = (v: number, ahead: string, behind: string) =>
     `${Math.abs(v)} m ${v < 0 ? behind : ahead}`;
   if (s.kind !== 'inondation') {
     parts.push(
-      `foyer à ${along(s.east, 'est', 'ouest')} et ${along(s.north, 'nord', 'sud')} du centre`,
+      `focus ${along(s.east, 'east', 'west')} and ${along(s.north, 'north', 'south')} of the centre`,
     );
   }
-  if (s.kind === 'incendie') parts.push(`vent de ${s.windFrom}°`);
-  parts.push(`graine ${s.seed}`);
-  return `${meta.label} ${number} : ${parts.join(', ')}`;
+  if (s.kind === 'incendie') parts.push(`wind from ${s.windFrom}°`);
+  parts.push(`seed ${s.seed}`);
+  return `${meta.label} ${number}: ${parts.join(', ')}`;
 }
 
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -144,21 +144,18 @@ export class DatasetCampaign {
     // d'images. Les données de l'IGN, elles, sont ouvertes.
     if (!this.running && !this.hooks.city.attribution?.includes('IGN')) {
       this.hooks.report(
-        'Jeu de données : réservé aux villes françaises, dont la photographie aérienne (IGN) est ouverte',
+        'Dataset: only for French cities, whose aerial imagery (IGN) is open',
         'err',
       );
       return;
     }
     if (this.running) {
       this.stopRequested = true;
-      this.hooks.report('Jeu de données : arrêt demandé, fin de l’image en cours…');
+      this.hooks.report('Dataset: stop requested, finishing the current image…');
       return;
     }
     if (!window.showDirectoryPicker) {
-      this.hooks.report(
-        'Jeu de données : il faut Chrome ou Edge pour écrire dans un dossier',
-        'err',
-      );
+      this.hooks.report('Dataset: Chrome or Edge is needed to write into a folder', 'err');
       return;
     }
     // Appelé sans attendre : le choix du dossier doit s'ouvrir dans le geste.
@@ -167,11 +164,11 @@ export class DatasetCampaign {
       .then((root) => this.run(root, mode))
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') {
-          this.hooks.report('Jeu de données : aucun dossier choisi');
+          this.hooks.report('Dataset: no folder chosen');
           return;
         }
         console.error('[jeu de données]', err);
-        this.hooks.report(`Jeu de données interrompu : ${String(err)}`, 'err');
+        this.hooks.report(`Dataset interrupted: ${String(err)}`, 'err');
       });
   }
 
@@ -371,7 +368,7 @@ export class DatasetCampaign {
           const file = `${pass.variant}_${String(n + 1).padStart(4, '0')}`;
           const blob = await new Promise<Blob>((resolve, reject) =>
             this.canvas.toBlob(
-              (b) => (b ? resolve(b) : reject(new Error('image vide'))),
+              (b) => (b ? resolve(b) : reject(new Error('empty image'))),
               'image/jpeg',
               CONFIG.dataset.jpegQuality,
             ),
@@ -402,8 +399,8 @@ export class DatasetCampaign {
           await writeFile(labels, `${file}.txt`, yoloLabels(record));
           records.push(record);
           report(
-            `Jeu de données — ${label}, scénario ${index + 1}/${passes.length} : ` +
-              `${n + 1}/${shots.length} (${records.length} images) · J pour arrêter`,
+            `Dataset — ${label}, scenario ${index + 1}/${passes.length}: ` +
+              `${n + 1}/${shots.length} (${records.length} images) · J to stop`,
           );
         }
       }
@@ -435,7 +432,7 @@ export class DatasetCampaign {
       drone.msl = this.hooks.groundAt(drone.lon, drone.lat) + drone.agl;
       this.hooks.restoreView();
       report(
-        `Jeu de données ${complete ? 'terminé' : 'arrêté'} : ${records.length} images dans « ${dir.name} »`,
+        `Dataset ${complete ? 'finished' : 'stopped'}: ${records.length} images in "${dir.name}"`,
         'ok',
       );
     }

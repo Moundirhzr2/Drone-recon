@@ -73,9 +73,11 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 8px;
+  height: 28px;
+  padding: 0 9px 0 10px;
   font-size: 10px;
   letter-spacing: 0.14em;
+  white-space: nowrap;
   color: var(--accent);
   border-bottom: 1px solid var(--edge-soft);
   background: linear-gradient(180deg, rgba(0, 229, 255, 0.07), transparent);
@@ -83,6 +85,53 @@ body {
 
 .panel > header .spacer {
   flex: 1;
+}
+
+/* Chevron des panneaux qui se déplient d'un clic sur l'en-tête. */
+.chev {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  fill: none;
+  stroke: var(--ink-dim);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.15s;
+}
+.panel:not(.collapsed) > header .chev,
+#hud-gps.open > header .chev {
+  transform: rotate(180deg);
+}
+#hud-gps:not(.open) > header .chev {
+  transform: none;
+}
+
+/* Libellé d'une valeur, au-dessus d'elle. */
+.k {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--ink-dim);
+}
+.u {
+  margin-left: 4px;
+  font-size: 10px;
+  color: var(--ink-dim);
+}
+
+kbd {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 16px;
+  color: var(--accent);
+  background: rgba(0, 229, 255, 0.1);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  padding: 0 4px;
+  white-space: nowrap;
 }
 
 .tag {
@@ -134,49 +183,55 @@ body {
   }
 }
 
-/* ---------- Télémétrie GPS (haut gauche) ---------- */
+/* ---------- Télémétrie (haut gauche) ---------- */
+/* Quatre valeurs à l'écran : altitude, vitesse, cap, batterie. Le reste se
+   déplie d'un clic sur l'en-tête : pendant le vol, on ne lit que celles-là. */
 #hud-gps {
   top: 12px;
   left: 12px;
   width: 268px;
 }
-#gps-rows {
-  padding: 6px 8px;
-  display: grid;
-  gap: 2px;
+#gps-header {
+  cursor: pointer;
+}
+#hud-gps b {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 
-.row {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  line-height: 1.5;
+.inst {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 12px 12px 6px;
 }
-.row .k {
-  color: var(--ink-dim);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  width: 74px;
-  flex: none;
+.inst b {
+  font-size: 22px;
+  line-height: 1;
 }
-.row .v {
-  font-variant-numeric: tabular-nums;
-  font-size: 12px;
+
+.nav {
+  display: grid;
+  grid-template-columns: 52px 1fr 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px 12px;
 }
-.row .u {
-  color: var(--ink-dim);
-  font-size: 10px;
+.nav b {
+  font-size: 16px;
+  line-height: 1;
 }
-.row.hi .v {
+.nav b.acc {
   color: var(--accent);
 }
 
 .bar {
+  display: block;
   height: 3px;
+  margin-top: 7px;
   background: rgba(255, 255, 255, 0.08);
   border-radius: 2px;
   overflow: hidden;
-  flex: 1;
 }
 .bar i {
   display: block;
@@ -187,43 +242,81 @@ body {
     background 0.3s;
 }
 
-.compass {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 2px 8px 8px;
-  border-top: 1px solid var(--edge-soft);
-}
 #compass-svg {
-  width: 62px;
-  height: 62px;
+  width: 52px;
+  height: 52px;
 }
 .c-ring {
   fill: rgba(0, 229, 255, 0.04);
   stroke: var(--edge);
-  stroke-width: 1;
+  stroke-width: 1.5;
 }
 .c-card {
   fill: var(--ink-dim);
-  font-size: 13px;
+  font-size: 15px;
   text-anchor: middle;
   font-family: var(--mono);
 }
 .c-tick {
   stroke: var(--accent);
-  stroke-width: 2;
+  stroke-width: 3;
 }
 .c-needle {
   fill: var(--accent);
 }
-.c-val {
-  font-size: 18px;
-  font-variant-numeric: tabular-nums;
+
+/* Marge au sol trop faible : la seule valeur cachée qui s'invite d'elle-même. */
+.gps-alert {
+  margin: 0 12px 10px;
+  padding: 5px 8px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--warn);
+  background: rgba(255, 196, 0, 0.08);
+  border: 1px solid rgba(255, 196, 0, 0.35);
+  border-radius: 2px;
 }
-.c-val b {
-  color: var(--accent);
-  font-weight: 600;
+
+/* Le détail, déplié. */
+#gps-rows {
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--edge-soft);
+}
+#gps-rows[hidden] {
+  display: none;
+}
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  line-height: 1.5;
+}
+.row .k {
+  display: inline;
+  width: 86px;
+  flex: none;
+  margin: 0;
+}
+.row .v {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+#hud-gps > footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 12px 8px;
+  border-top: 1px solid var(--edge-soft);
+  font-size: 10px;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#hud-gps > footer b {
+  color: var(--ink);
 }
 
 /* ---------- Caméra nadir (haut droite) ---------- */
@@ -274,10 +367,11 @@ body {
   width: 8%;
 }
 
+/* Emprise et résolution, dans l'image : la hauteur est déjà dans la télémétrie. */
 .nadir-foot {
   position: absolute;
-  left: 6px;
-  bottom: 6px;
+  left: 8px;
+  bottom: 7px;
   font-size: 10px;
   color: var(--accent);
   text-shadow:
@@ -285,29 +379,36 @@ body {
     0 1px 2px #000;
 }
 
-.nadir-stats {
-  display: flex;
-  gap: 0;
-  border-top: 1px solid var(--edge-soft);
+/* Bouton à icône d'un en-tête : la vue en grand. */
+.ico-btn {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 18px;
+  padding: 0;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  cursor: pointer;
 }
-.nadir-stats .st {
-  flex: 1;
-  padding: 4px 6px;
-  text-align: center;
-  border-right: 1px solid var(--edge-soft);
+.ico-btn svg {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
-.nadir-stats .st:last-child {
-  border-right: 0;
+.ico-btn:hover:not(.on) {
+  color: var(--accent);
+  border-color: var(--accent);
 }
-.nadir-stats .st b {
-  display: block;
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-.nadir-stats .st span {
-  font-size: 9px;
-  color: var(--ink-dim);
-  letter-spacing: 0.08em;
+.ico-btn.on {
+  color: #002029;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 /* ---------- Pilotage / mains (bas gauche) ---------- */
@@ -399,17 +500,61 @@ body {
 .hands-msg.ok {
   color: var(--ok);
 }
+.hands-msg:empty {
+  display: none;
+}
 
-/* ---------- Simulateur de desastres (gauche, sous la telemetrie) ---------- */
+/* Sans les mains : le cadre de la webcam et les manches vides laissent la
+   place à une pastille, qui les rallume d'un clic. */
+.hands-pill {
+  display: none;
+}
+#hud-hands.off {
+  width: auto;
+  border-color: var(--edge-soft);
+}
+#hud-hands.off > :not(.hands-pill) {
+  display: none;
+}
+#hud-hands.off .hands-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 7px 0 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.hands-pill:hover {
+  color: var(--ink);
+}
+.hands-pill svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------- Simulateur de desastres (droite, sous la caméra nadir) ---------- */
 /* Colonne de droite, sous la vue nadir : la colonne de gauche est déjà pleine
    (télémétrie en haut, pilotage en bas) et le panneau s'y chevauchait des deux
-   côtés. `max-height` + défilement interne garantissent qu'il ne déborde
-   jamais sur le rapport de diagnostic, même sur un écran court. */
+   côtés. Il commence sous la caméra (12 + 28 + 340 + 2 px, et 8 px d'écart) :
+   plus haut, son en-tête en cachait le bas de l'image. `max-height` +
+   défilement interne garantissent qu'il ne déborde jamais sur le rapport de
+   diagnostic, même sur un écran court. */
 #hud-disaster {
-  top: 348px;
+  top: 390px;
   right: 12px;
   width: 342px;
-  max-height: calc(100vh - 460px);
+  max-height: calc(100vh - 502px);
   overflow-y: auto;
   /* Sans cela, la moindre colonne de grille trop large ajoute une barre de
      défilement horizontale et rogne le dernier bouton. */
@@ -417,6 +562,16 @@ body {
 }
 #hud-disaster > header {
   cursor: pointer;
+}
+/* L'aléa en cours, à la place du mot SIMULATOR dès qu'un sinistre est armé. */
+#disaster-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#disaster-title.armed {
+  color: var(--ink);
+  letter-spacing: 0.1em;
 }
 #hud-disaster.collapsed .disaster-body {
   display: none;
@@ -621,6 +776,65 @@ body {
 .dis-file .dis-btn {
   padding: 4px 8px;
 }
+/* ---------- Paire avant / après, vue nadir ---------- */
+#pair-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(2, 5, 8, 0.82);
+}
+#pair-preview[hidden] {
+  display: none;
+}
+#pair-preview figure {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  margin: 0;
+  max-width: 100%;
+}
+#pair-preview canvas {
+  display: block;
+  max-width: min(94vw, 1400px);
+  max-height: 78vh;
+  width: auto;
+  height: auto;
+  border: 1px solid var(--edge);
+}
+/* Sous la planche, qui porte déjà tout le reste : où sont les fichiers, et
+   le bouton pour fermer. */
+#pair-preview figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+}
+#pair-preview-close {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 8px 0 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  cursor: pointer;
+}
+#pair-preview-close:hover {
+  border-color: var(--accent);
+}
 .dis-pair {
   width: 100%;
   margin-top: 4px;
@@ -672,10 +886,15 @@ body {
 }
 
 /* ---------- Rapport de diagnostic (bas droite) ---------- */
+/* Il n'apparaît qu'avec le diagnostic (V) ou le modèle (O) : sans eux, il
+   n'aurait rien à dire. Sans photo, la galerie disparaît et il descend. */
 #hud-report {
   bottom: 92px;
   right: 12px;
   width: 342px;
+}
+body:has(#gallery-strip:empty) #hud-report {
+  bottom: 12px;
 }
 #report-header {
   cursor: pointer;
@@ -775,12 +994,9 @@ body {
   overflow-x: auto;
   overflow-y: hidden;
 }
-#gallery-strip:empty::after {
-  content: 'Aucune prise de vue — ESPACE ou pincement main droite';
-  color: var(--ink-dim);
-  font-size: 10px;
-  align-self: center;
-  padding: 0 4px;
+/* Sans photo, pas de galerie : les raccourcis disent déjà comment en prendre. */
+#hud-gallery:has(#gallery-strip:empty) {
+  display: none;
 }
 .shot {
   position: relative;
@@ -811,38 +1027,150 @@ body {
   border-color: var(--accent);
 }
 
-/* ---------- Bandeau de commandes ---------- */
+/* ---------- Raccourcis du vol (bas, au centre) ---------- */
+/* Une seule ligne : les gestes du vol et de la capture. Toutes les autres
+   touches sont dans l'aide, que « ? » ouvre (voir `KeyHelp` dans hud.ts). */
 #keymap {
-  position: absolute;
   bottom: 12px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 10;
   display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-  justify-content: center;
-  max-width: 46vw;
+  align-items: center;
+  height: 30px;
+  padding: 0 2px;
+  white-space: nowrap;
+  border-color: var(--edge-soft);
 }
 #keymap .km {
   display: flex;
   align-items: center;
-  gap: 4px;
-  background: var(--panel);
-  border: 1px solid var(--edge-soft);
-  border-radius: 2px;
-  padding: 3px 6px;
+  gap: 6px;
+  padding: 0 10px;
   font-size: 10px;
   color: var(--ink-dim);
 }
-#keymap .km kbd {
+#keymap .km + .km {
+  border-left: 1px solid var(--edge-soft);
+}
+#keymap .km kbd + kbd {
+  margin-left: -2px;
+}
+#keymap .km-more {
+  height: 100%;
   font-family: var(--mono);
-  font-size: 10px;
+  color: var(--ink);
+  background: transparent;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  cursor: pointer;
+}
+#keymap .km-more:hover,
+#keymap .km-more.on {
   color: var(--accent);
-  background: rgba(0, 229, 255, 0.1);
-  border: 1px solid var(--edge);
-  border-radius: 2px;
-  padding: 0 4px;
+}
+#keymap .km-more.on kbd {
+  color: #002029;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ---------- Aide du clavier (touche ?) ---------- */
+#keys-help {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(2, 5, 8, 0.5);
+}
+#keys-help[hidden] {
+  display: none;
+}
+#keys-help > .panel {
+  position: relative;
+  width: min(900px, 100%);
+  transform: translateY(-4%);
+}
+#keys-help .close-hint {
+  color: var(--ink-dim);
+  letter-spacing: 0.06em;
+}
+#keys-help .close-hint kbd {
+  margin: 0 3px;
+}
+.keys-cols {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.keys-col {
+  padding: 14px 16px 16px;
+}
+.keys-col + .keys-col {
+  border-left: 1px solid var(--edge-soft);
+}
+.keys-col h3 {
+  margin: 0 0 10px;
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  color: var(--ink-dim);
+}
+.keys-col ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.keys-col li {
+  display: grid;
+  grid-template-columns: 78px 1fr;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+}
+.keys-col li kbd {
+  justify-self: start;
+}
+
+/* ---------- Messages passagers (au-dessus des raccourcis) ---------- */
+#toast {
+  left: 50%;
+  bottom: 52px;
+  z-index: 12;
+  max-width: min(560px, calc(100vw - 720px));
+  padding: 7px 12px;
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: center;
+  color: var(--ink);
+  border-color: var(--edge-soft);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, 6px);
+  transition:
+    opacity 0.2s,
+    transform 0.2s,
+    visibility 0.2s;
+}
+#toast.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+#toast.ok {
+  color: var(--ok);
+}
+#toast.err {
+  color: var(--bad);
+  border-color: rgba(255, 23, 68, 0.45);
+}
+/* La planche avant / après dit déjà où sont ses fichiers. */
+body:has(#pair-preview:not([hidden])) #toast {
+  visibility: hidden;
 }
 
 /* ---------- Flash obturateur ---------- */
@@ -929,8 +1257,16 @@ body {
     width: 260px;
     height: 260px;
   }
-  #keymap {
-    max-width: 32vw;
+  /* Sous une caméra de 260 px : 12 + 28 + 260 + 2, et 8 px d'écart. */
+  #hud-disaster {
+    top: 310px;
+    max-height: calc(100vh - 422px);
+  }
+}
+@media (max-width: 1200px) {
+  /* Plus étroit, les raccourcis gardent l'essentiel ; tout reste dans l'aide. */
+  #keymap .km.opt {
+    display: none;
   }
 }
 
@@ -1037,7 +1373,17 @@ body {
   display: none;
 }
 body.hud-hidden
-  :is(#overlay-main, .panel, #keymap, #gpu-warning, #demo-caption, #quality-toggle, #place-toggle) {
+  :is(
+    #overlay-main,
+    .panel,
+    #keymap,
+    #keys-help,
+    #toast,
+    #gpu-warning,
+    #demo-caption,
+    #quality-toggle,
+    #place-toggle
+  ) {
   visibility: hidden;
 }
 /* Seul reste le bouton, discret tant qu'on ne le survole pas. */
@@ -1213,6 +1559,12 @@ body.photoreal #hud-gallery,
 body.photoreal #keymap {
   bottom: 34px;
 }
+body.photoreal #toast {
+  bottom: 74px;
+}
 body.photoreal #hud-report {
   bottom: 114px;
+}
+body.photoreal:has(#gallery-strip:empty) #hud-report {
+  bottom: 34px;
 }

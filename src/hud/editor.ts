@@ -35,11 +35,11 @@ const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) 
 
 /** Libellé de chaque bouton : un verbe d'action pour « intact ». */
 const ACTION: Record<DamageState, string> = {
-  intact: 'Réparer',
-  cracked: 'Fissuré',
-  partial: 'Partiel',
-  collapsed: 'Effondré',
-  burnt: 'Incendié',
+  intact: 'Repair',
+  cracked: 'Cracked',
+  partial: 'Partial',
+  collapsed: 'Collapsed',
+  burnt: 'Burnt',
 };
 
 /** Au-delà, un clic à côté de tout contour ne prend aucun bâtiment, en mètres. */
@@ -124,11 +124,11 @@ export class BuildingEditor {
     if (this.active) {
       this.hooks.panel.open();
       this.hooks.report(
-        'Sélection : clic sur un bâtiment, Maj + clic pour en ajouter — E pour finir',
+        'Selection: click a building, Shift + click to add more — E to finish',
         'ok',
       );
     } else {
-      this.hooks.report('Sélection terminée', 'ok');
+      this.hooks.report('Selection done', 'ok');
     }
     this.refresh();
   }
@@ -183,7 +183,7 @@ export class BuildingEditor {
     this.hooks.panel.applyEdits([...this.selection], state);
     const n = this.selection.size;
     this.hooks.report(
-      `${ACTION[state]} : ${n} bâtiment${n > 1 ? 's' : ''} — B / N pour comparer avant / après`,
+      `${ACTION[state]}: ${n} building${n > 1 ? 's' : ''} — B / N to compare before / after`,
       'ok',
     );
   }
@@ -195,7 +195,7 @@ export class BuildingEditor {
   }
 
   private refresh(): void {
-    this.toggleBtn.textContent = this.active ? 'Terminer (E)' : 'Sélectionner (E)';
+    this.toggleBtn.textContent = this.active ? 'Done (E)' : 'Select (E)';
     this.toggleBtn.classList.toggle('playing', this.active);
     for (const b of this.buttons.values()) b.disabled = this.selection.size === 0;
 
@@ -204,12 +204,12 @@ export class BuildingEditor {
     let text: string;
     if (n === 0) {
       text = this.active
-        ? 'Clic sur un bâtiment ; Maj + clic pour en ajouter.'
-        : 'E, puis clic sur un ou plusieurs bâtiments.';
+        ? 'Click a building; Shift + click to add more.'
+        : 'Press E, then click one or more buildings.';
     } else if (n === 1 && first) {
       text = `${first.name} (${DAMAGE_INFO[first.state].label.toLowerCase()})`;
     } else {
-      text = `${n} bâtiments sélectionnés`;
+      text = `${n} buildings selected`;
     }
     // Appelé à chaque image tant qu'un bâtiment est choisi : on n'écrit que
     // si le texte change.

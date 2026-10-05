@@ -41,7 +41,7 @@ function worldPixel(lon: number, lat: number): [number, number] {
 /** Lit une tuile et la décode en altitudes, ligne par ligne. */
 async function tile(x: number, y: number): Promise<Float32Array> {
   const res = await fetch(`${TILES}/${ZOOM}/${x}/${y}.png`);
-  if (!res.ok) throw new Error(`relief mondial indisponible (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(`world relief unavailable (HTTP ${res.status})`);
   const bitmap = await createImageBitmap(await res.blob());
   const canvas = new OffscreenCanvas(TILE, TILE);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -110,7 +110,7 @@ export async function fetchWorldRelief(place: Place): Promise<ReliefFile> {
       heights.push(Math.round(sample(x, y) * 100));
     }
   }
-  if (heights.some((h) => !Number.isFinite(h))) throw new Error('relief mondial incomplet');
+  if (heights.some((h) => !Number.isFinite(h))) throw new Error('incomplete world relief');
 
   return {
     zone: { lat: place.lat, lon: place.lon, halfSize: HALF_SIZE },
@@ -118,6 +118,6 @@ export async function fetchWorldRelief(place: Place): Promise<ReliefFile> {
     size,
     unit: 'cm',
     heights,
-    attribution: 'Relief : Mapzen, Terrarium (AWS Open Data)',
+    attribution: 'Relief: Mapzen, Terrarium (AWS Open Data)',
   };
 }

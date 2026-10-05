@@ -33,11 +33,11 @@ export class PlacePicker {
 
   constructor(current: Place) {
     this.button.textContent = current.name;
-    this.button.title = 'Changer de lieu';
+    this.button.title = 'Change location';
     this.home.hidden = isMulhouse(current);
     this.note.textContent = this.google
-      ? 'Recherche : Google (Entrée pour chercher). Données : IGN en France, OpenStreetMap ailleurs.'
-      : 'Recherche : IGN et Photon. Données : IGN en France, OpenStreetMap ailleurs.';
+      ? 'Search: Google (Enter to search). Data: IGN in France, OpenStreetMap elsewhere.'
+      : 'Search: IGN and Photon. Data: IGN in France, OpenStreetMap elsewhere.';
 
     this.button.addEventListener('click', () => this.toggle());
     this.home.addEventListener('click', () => goToPlace(MULHOUSE));
@@ -78,7 +78,7 @@ export class PlacePicker {
       return;
     }
     if (seq !== this.seq) return;
-    this.show(found, query.trim().length >= 2 && !found.length ? 'Aucun lieu trouvé.' : '');
+    this.show(found, query.trim().length >= 2 && !found.length ? 'No place found.' : '');
   }
 
   private show(found: Found[], message: string, error = false): void {
@@ -90,7 +90,7 @@ export class PlacePicker {
       b.textContent = place.label;
       b.addEventListener('click', () => {
         this.results.innerHTML = '';
-        this.note.textContent = `Chargement de ${place.name}…`;
+        this.note.textContent = `Loading ${place.name}…`;
         goToPlace(place);
       });
       this.results.appendChild(b);

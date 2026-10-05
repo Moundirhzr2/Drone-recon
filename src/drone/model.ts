@@ -179,6 +179,23 @@ export class DroneModel {
     return this.frame;
   }
 
+  /**
+   * Dessine sans le drone ni son anneau : la caméra nadir les verrait, l'anneau
+   * au milieu de chaque photo.
+   */
+  hidden(draw: () => void): void {
+    const ring = this.ring.show;
+    const body = this.model?.show ?? false;
+    this.ring.show = false;
+    if (this.model) this.model.show = false;
+    try {
+      draw();
+    } finally {
+      this.ring.show = ring;
+      if (this.model) this.model.show = body;
+    }
+  }
+
   setVisible(v: boolean): void {
     this.visible = v;
     this.ring.show = v;

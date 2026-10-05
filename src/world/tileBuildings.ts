@@ -37,7 +37,7 @@ type Point = [number, number];
 export async function fetchTileBuildings(place: Place, halfSize: number): Promise<CityFile> {
   const meta = (await (await fetch(TILES)).json()) as { tiles?: string[] };
   const found = TEMPLATE.exec(meta.tiles?.[0] ?? '');
-  if (!found) throw new Error('tuiles de bâtiments : adresse inattendue');
+  if (!found) throw new Error('building tiles: unexpected address');
   // De la réponse, on ne garde que la date de la carte, relue en nombres :
   // l'adresse des tuiles se rebâtit sur le serveur connu.
   const version = `${Number(found[1])}_${String(Number(found[2])).padStart(6, '0')}_pt`;
@@ -62,7 +62,7 @@ export async function fetchTileBuildings(place: Place, halfSize: number): Promis
       jobs.push(
         (async () => {
           const res = await fetch(`${TILES}/${version}/${ZOOM}/${tx}/${ty}.pbf`);
-          if (!res.ok) throw new Error(`tuile de bâtiments indisponible (HTTP ${res.status})`);
+          if (!res.ok) throw new Error(`building tile unavailable (HTTP ${res.status})`);
           const layer = new VectorTile(new PbfReader(new Uint8Array(await res.arrayBuffer())))
             .layers.building;
           if (!layer) return;
@@ -120,12 +120,11 @@ export async function fetchTileBuildings(place: Place, halfSize: number): Promis
     }
   }
   await Promise.all(jobs);
-  if (!buildings.length)
-    throw new Error('aucun bâtiment dans OpenStreetMap ici : choisir un lieu bâti');
+  if (!buildings.length) throw new Error('no OpenStreetMap building here: choose a built-up place');
 
   return {
     zone: { name: place.name, lat: place.lat, lon: place.lon, halfSize },
-    attribution: '© les contributeurs d’OpenStreetMap (ODbL), tuiles OpenFreeMap',
+    attribution: '© OpenStreetMap contributors (ODbL), OpenFreeMap tiles',
     buildings,
   };
 }

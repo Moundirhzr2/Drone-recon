@@ -47,68 +47,75 @@ function escapeHtml(text: string): string {
 // ------------------------------------------------------------------
 // Télémétrie (haut gauche)
 // ------------------------------------------------------------------
+/**
+ * Quatre valeurs à l'écran — altitude, vitesse, cap, batterie — et la
+ * position sur une ligne. Le reste se déplie d'un clic sur l'en-tête : en vol,
+ * on ne lit que celles-là, et douze lignes ensemble se lisaient mal.
+ */
 export class GpsPanel {
+  private panel = $('hud-gps');
   private rows = $('gps-rows');
   private cells = new Map<string, HTMLElement>();
   private needle = $('compass-rose');
   private deg = $('compass-deg');
   private fix = $('gps-fix');
   private modeTag = $('gps-mode');
-  private batteryBar: HTMLElement | null = null;
+  private alert = $('gps-alert');
+  private batteryBar = $('gps-battery');
 
   constructor(private home: { lon: number; lat: number }) {
     this.build();
+    $('gps-header').addEventListener('click', () => {
+      this.rows.hidden = !this.panel.classList.toggle('open');
+    });
   }
 
   private build(): void {
+    // Les valeurs principales sont dans la page ; le détail se construit ici.
+    for (const el of this.panel.querySelectorAll<HTMLElement>('[data-v]')) {
+      this.cells.set(el.dataset.v ?? '', el);
+    }
     const defs: Array<[string, string, string]> = [
-      ['lat', 'LATITUDE', ''],
-      ['lon', 'LONGITUDE', ''],
+      ['msl', 'ALT MSL', 'm'],
+      ['clr', 'CLEARANCE', 'm'],
+      ['vsi', 'VERT SPEED', 'm/s'],
       ['dms', 'DMS', ''],
-      ['agl', 'ALT SOL', 'm'],
-      ['clr', 'SOUS DRONE', 'm'],
-      ['msl', 'ALT MER', 'm'],
-      ['spd', 'VIT SOL', 'm/s'],
-      ['vsi', 'VIT VERT', 'm/s'],
-      ['home', 'DIST HOME', 'm'],
       ['sat', 'SATELLITES', ''],
-      ['fps', 'IMAGES/S', ''],
+      ['fps', 'FRAMES/S', ''],
     ];
-
     for (const [key, k, u] of defs) {
       const row = document.createElement('div');
-      row.className = key === 'lat' || key === 'lon' ? 'row hi' : 'row';
+      row.className = 'row';
       row.innerHTML = `<span class="k">${k}</span><span class="v" data-v="${key}">—</span><span class="u">${u}</span>`;
       this.rows.appendChild(row);
       this.cells.set(key, row.querySelector('[data-v]') as HTMLElement);
     }
-
-    const bat = document.createElement('div');
-    bat.className = 'row';
-    bat.innerHTML =
-      '<span class="k">BATTERIE</span><span class="bar"><i></i></span><span class="v" data-v="bat">—</span>';
-    this.rows.appendChild(bat);
-    this.cells.set('bat', bat.querySelector('[data-v]') as HTMLElement);
-    this.batteryBar = bat.querySelector('.bar i');
   }
 
   update(s: DroneState, holding: boolean, fps = 0): void {
-    put(this.cells.get('lat')!, s.lat.toFixed(6) + '°');
-    put(this.cells.get('lon')!, s.lon.toFixed(6) + '°');
-    put(this.cells.get('dms')!, `${toDMS(s.lat, 'lat')}`);
     put(this.cells.get('agl')!, s.agl.toFixed(1));
-    // Hauteur des pieds au-dessus de ce qui est dessous : sol, toit ou gravats.
-    const clearance = Math.max(0, s.msl - CONFIG.drone.minAGL - s.floor);
-    const clrCell = this.cells.get('clr')!;
-    put(clrCell, clearance.toFixed(1));
-    clrCell.style.color = !s.landed && clearance < 2 ? 'var(--warn)' : '';
-    put(this.cells.get('msl')!, s.msl.toFixed(1));
     put(this.cells.get('spd')!, this.speed(s).toFixed(1));
-    put(this.cells.get('vsi')!, (s.vUp >= 0 ? '+' : '') + s.vUp.toFixed(1));
+    const lat = `${Math.abs(s.lat).toFixed(6)}° ${s.lat >= 0 ? 'N' : 'S'}`;
+    const lon = `${Math.abs(s.lon).toFixed(6)}° ${s.lon >= 0 ? 'E' : 'W'}`;
+    put(this.cells.get('pos')!, `${lat} · ${lon}`);
     put(
       this.cells.get('home')!,
       groundDistance(this.home.lon, this.home.lat, s.lon, s.lat).toFixed(0),
     );
+
+    // Hauteur des pieds au-dessus de ce qui est dessous : sol, toit ou gravats.
+    const clearance = Math.max(0, s.msl - CONFIG.drone.minAGL - s.floor);
+    const low = !s.landed && clearance < 2;
+    const clrCell = this.cells.get('clr')!;
+    put(clrCell, clearance.toFixed(1));
+    clrCell.style.color = low ? 'var(--warn)' : '';
+    // Trop près d'un obstacle : la seule valeur du détail qui s'affiche seule.
+    if (this.alert.hidden === low) this.alert.hidden = !low;
+    if (low) put(this.alert, `CLEARANCE ${clearance.toFixed(1)} m`);
+
+    put(this.cells.get('msl')!, s.msl.toFixed(1));
+    put(this.cells.get('vsi')!, (s.vUp >= 0 ? '+' : '') + s.vUp.toFixed(1));
+    put(this.cells.get('dms')!, `${toDMS(s.lat, 'lat')}`);
     // Nombre de satellites simulé : il varie doucement pour rester crédible.
     const sats = 11 + Math.round(2 * Math.sin(s.flightTime / 9));
     put(this.cells.get('sat')!, `${sats}  ●`);
@@ -120,18 +127,16 @@ export class GpsPanel {
 
     const pct = Math.round(s.battery * 100);
     put(this.cells.get('bat')!, pct + '%');
-    if (this.batteryBar) {
-      this.batteryBar.style.width = pct + '%';
-      this.batteryBar.style.background =
-        pct > 40 ? 'var(--ok)' : pct > 15 ? 'var(--warn)' : 'var(--bad)';
-    }
+    this.batteryBar.style.width = pct + '%';
+    this.batteryBar.style.background =
+      pct > 40 ? 'var(--ok)' : pct > 15 ? 'var(--warn)' : 'var(--bad)';
 
     const hdg = Math.round(wrap360(s.heading));
     put(this.deg, String(hdg).padStart(3, '0'));
     this.needle.setAttribute('transform', `rotate(${-hdg})`);
 
     this.fix.className = 'dot ' + (s.battery > 0.05 ? 'live' : 'warn');
-    put(this.modeTag, s.landed ? 'POSÉ' : holding ? 'STABLE' : 'MANUEL');
+    put(this.modeTag, s.landed ? 'LANDED' : holding ? 'HOLD' : 'MANUAL');
     this.modeTag.className = 'tag' + (s.landed || holding ? ' on' : '');
   }
 
@@ -146,60 +151,70 @@ export class GpsPanel {
 export type NadirViewMode = 'brut' | 'diagnostic' | 'modele';
 
 const NADIR_TAG: Record<NadirViewMode, string> = {
-  brut: 'BRUT',
+  brut: 'RAW',
   diagnostic: 'DIAGNOSTIC',
-  modele: 'MODÈLE',
+  modele: 'MODEL',
 };
 
 export class NadirPanel {
-  private stats = $('nadir-stats');
   private modeTag = $('nadir-mode');
   private foot = $('nadir-footprint');
-  private cells = new Map<string, HTMLElement>();
 
-  constructor() {
-    for (const [key, unit] of [
-      ['alt', 'ALT'],
-      ['gsd', 'CM/PX'],
-      ['det', 'CIBLES'],
-    ] as Array<[string, string]>) {
-      const st = document.createElement('div');
-      st.className = 'st';
-      st.innerHTML = `<b data-v>—</b><span>${unit}</span>`;
-      this.stats.appendChild(st);
-      this.cells.set(key, st.querySelector('[data-v]') as HTMLElement);
-    }
-  }
-
-  /** @param view ce que montre la vignette : l'image seule, le diagnostic simulé ou le modèle. */
-  update(g: NadirGeometry | null, detections: Detection[], view: NadirViewMode): void {
+  /**
+   * L'emprise et la résolution s'écrivent dans l'image : la hauteur est déjà
+   * dans la télémétrie, et le nombre de cibles dans le rapport de diagnostic.
+   *
+   * @param view ce que montre la vignette : l'image seule, le diagnostic simulé ou le modèle.
+   */
+  update(g: NadirGeometry | null, view: NadirViewMode): void {
     put(this.modeTag, NADIR_TAG[view]);
     this.modeTag.className =
       'tag' + (view === 'diagnostic' ? ' hot' : view === 'modele' ? ' on' : '');
 
     if (!g) return;
-    put(this.foot, `${g.footprint.toFixed(0)} m × ${g.footprint.toFixed(0)} m`);
-    put(this.cells.get('alt')!, g.agl.toFixed(0));
-    put(this.cells.get('gsd')!, ((g.footprint / g.size) * 100).toFixed(1));
-    put(this.cells.get('det')!, String(detections.length));
+    const side = g.footprint.toFixed(0);
+    const gsd = ((g.footprint / g.size) * 100).toFixed(1);
+    put(this.foot, `${side} m × ${side} m · ${gsd} cm/px`);
   }
 }
 
 // ------------------------------------------------------------------
 // Pilotage (bas gauche)
 // ------------------------------------------------------------------
+/**
+ * Sans suivi des mains, le panneau se replie en une pastille : le cadre noir
+ * de la webcam et les deux manches vides n'avaient rien à montrer. Il se
+ * déplie dès que les mains prennent la main (touche H, ou clic sur la pastille).
+ *
+ * Les messages passagers — prise de vue, changement de vue, erreurs — ont
+ * quitté ce panneau pour un bandeau au-dessus des raccourcis : sa ligne ne dit
+ * plus que l'état des mains.
+ */
 export class HandsPanel {
+  private panel = $('hud-hands');
   private dot = $('hands-dot');
   private source = $('hands-source');
   private msg = $('hands-msg');
+  private toast = $('toast');
   private stickL = $('stick-l');
   private stickR = $('stick-r');
-  private msgUntil = 0;
+  private toastTimer = 0;
 
+  constructor() {
+    const pill = $<HTMLButtonElement>('hands-pill');
+    pill.addEventListener('click', () => {
+      // Comme pour l'œil : ESPACE, qui prend les photos, ne doit pas le redéclencher.
+      pill.blur();
+      emit('hands:toggle');
+    });
+  }
+
+  /** Message passager, quatre secondes au-dessus des raccourcis. */
   setMessage(text: string, kind: 'info' | 'ok' | 'err' = 'info'): void {
-    this.msg.textContent = text;
-    this.msg.className = 'hands-msg' + (kind === 'info' ? '' : ' ' + kind);
-    this.msgUntil = performance.now() + 4000;
+    this.toast.textContent = text;
+    this.toast.className = 'panel show' + (kind === 'info' ? '' : ' ' + kind);
+    window.clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => this.toast.classList.remove('show'), 4000);
   }
 
   update(
@@ -207,31 +222,33 @@ export class HandsPanel {
     sourceName: string,
     hands: { left: boolean; right: boolean; calibrating: boolean; hold: boolean } | null,
   ): void {
+    const off = !hands;
+    if (this.panel.classList.contains('off') !== off) this.panel.classList.toggle('off', off);
+
     // Manche gauche : rotation en X, altitude en Y. Manche droit : translation.
     this.place(this.stickL, ctl.yaw, ctl.throttle);
     this.place(this.stickR, ctl.roll, ctl.pitch);
 
     const active = hands && (hands.left || hands.right);
-    put(this.source, active ? 'MAINS' : sourceName === 'clavier' ? 'CLAVIER' : 'INACTIF');
+    put(this.source, active ? 'HANDS' : sourceName === 'clavier' ? 'KEYBOARD' : 'IDLE');
     this.source.className = 'tag' + (active ? ' on' : '');
     this.dot.className = 'dot ' + (active ? 'live' : 'off');
 
-    if (performance.now() < this.msgUntil) return;
+    // Repliée, la pastille dit tout : « Hand control off ».
     if (!hands) {
-      this.msg.className = 'hands-msg';
-      put(this.msg, 'Mains inactives — touche H pour activer');
+      put(this.msg, '');
     } else if (hands.calibrating) {
       this.msg.className = 'hands-msg';
-      put(this.msg, 'Calibrage en cours — mains au centre');
+      put(this.msg, 'Calibrating — hands in the centre');
     } else if (hands.left && hands.right) {
       this.msg.className = 'hands-msg ok';
-      put(this.msg, 'Deux mains — pincer à droite : photo · à gauche : diagnostic');
+      put(this.msg, 'Both hands — right pinch: photo · left pinch: diagnostic');
     } else if (hands.left || hands.right) {
       this.msg.className = 'hands-msg';
-      put(this.msg, `Main ${hands.left ? 'gauche' : 'droite'} seule — axes partiels`);
+      put(this.msg, `${hands.left ? 'Left' : 'Right'} hand only — partial axes`);
     } else {
       this.msg.className = 'hands-msg err';
-      put(this.msg, 'Aucune main vue — stationnaire automatique');
+      put(this.msg, 'No hand seen — automatic hover');
     }
   }
 
@@ -258,7 +275,9 @@ export class ReportPanel {
     });
   }
 
+  /** Sans diagnostic (V) ni modèle (O), le panneau n'a rien à dire : il disparaît. */
   setOpen(open: boolean): void {
+    this.panel.hidden = !open;
     this.panel.classList.toggle('collapsed', !open);
   }
 
@@ -302,16 +321,16 @@ export class ReportPanel {
             </div>`;
           })
           .join('')
-      : '<div class="dl"><span class="nm" style="color:var(--ink-dim)">Aucune cible dans le cadre</span></div>';
+      : '<div class="dl"><span class="nm" style="color:var(--ink-dim)">No target in frame</span></div>';
 
     this.body.innerHTML = `
       <div class="dmg-legend">${legend}</div>
       ${list}
       <div class="metrics">
-        <div class="m"><span>PRÉCISION</span><b>${pct(metrics.precision)}</b></div>
-        <div class="m"><span>RAPPEL</span><b>${pct(metrics.recall)}</b></div>
-        <div class="m"><span>CLASSE OK</span><b>${pct(metrics.classAccuracy)}</b></div>
-        <div class="m"><span>MANQUÉS</span><b>${metrics.falseNegatives}</b></div>
+        <div class="m"><span>PRECISION</span><b>${pct(metrics.precision)}</b></div>
+        <div class="m"><span>RECALL</span><b>${pct(metrics.recall)}</b></div>
+        <div class="m"><span>CLASS OK</span><b>${pct(metrics.classAccuracy)}</b></div>
+        <div class="m"><span>MISSED</span><b>${metrics.falseNegatives}</b></div>
       </div>
       ${note ? `<p class="report-note">${escapeHtml(note)}</p>` : ''}`;
   }
@@ -326,7 +345,7 @@ export class Gallery {
   add(photo: Photo): void {
     const el = document.createElement('div');
     el.className = 'shot';
-    el.title = `${photo.id} — ${photo.agl.toFixed(0)} m — ${photo.detections.length} cible(s)`;
+    el.title = `${photo.id} — ${photo.agl.toFixed(0)} m — ${photo.detections.length} target(s)`;
     el.innerHTML = `<img src="${photo.dataUrl}" alt="${photo.id}"><b>${photo.detections.length}</b>`;
     el.addEventListener('click', () => openPhoto(photo));
     this.strip.prepend(el);
@@ -356,14 +375,14 @@ function openPhoto(photo: Photo): void {
     <div><h1>${photo.id}</h1><img src="${photo.dataUrl}"></div>
     <div>
       <dl>
-        <dt>HORODATAGE</dt><dd>${photo.at.toLocaleString('fr-FR')}</dd>
+        <dt>TIMESTAMP</dt><dd>${photo.at.toLocaleString('en-GB')}</dd>
         <dt>POSITION</dt><dd>${photo.geometry.lat.toFixed(6)}, ${photo.geometry.lon.toFixed(6)}</dd>
-        <dt>ALTITUDE SOL</dt><dd>${photo.agl.toFixed(1)} m</dd>
-        <dt>CAP</dt><dd>${photo.heading.toFixed(0)}°</dd>
-        <dt>EMPRISE AU SOL</dt><dd>${photo.geometry.footprint.toFixed(1)} m × ${photo.geometry.footprint.toFixed(1)} m</dd>
-        <dt>RÉSOLUTION</dt><dd>${photo.gsd.toFixed(1)} cm/pixel</dd>
+        <dt>ALTITUDE AGL</dt><dd>${photo.agl.toFixed(1)} m</dd>
+        <dt>HEADING</dt><dd>${photo.heading.toFixed(0)}°</dd>
+        <dt>GROUND FOOTPRINT</dt><dd>${photo.geometry.footprint.toFixed(1)} m × ${photo.geometry.footprint.toFixed(1)} m</dd>
+        <dt>RESOLUTION</dt><dd>${photo.gsd.toFixed(1)} cm/pixel</dd>
       </dl>
-      <table><tr><th>ID</th><th>ADRESSE</th><th>CLASSE</th><th>SCORE</th><th>DIST</th></tr>${rows}</table>
+      <table><tr><th>ID</th><th>ADDRESS</th><th>CLASS</th><th>SCORE</th><th>DIST</th></tr>${rows}</table>
     </div>`);
   w.document.close();
 }
@@ -400,7 +419,7 @@ export class HudToggle {
 
   private render(): void {
     document.body.classList.toggle('hud-hidden', this.hidden);
-    const label = this.hidden ? "Afficher l'interface (I)" : "Masquer l'interface (I)";
+    const label = this.hidden ? 'Show the interface (I)' : 'Hide the interface (I)';
     this.button.title = label;
     this.button.setAttribute('aria-label', label);
     this.button.setAttribute('aria-pressed', String(this.hidden));
@@ -435,10 +454,10 @@ export class QualityButton {
     this.state = state;
     this.button.dataset.state = state;
     const label = fixed
-      ? 'Qualité fixée — rendre la main au régulateur (F)'
+      ? 'Quality locked — hand back to the governor (F)'
       : degraded
-        ? 'Qualité réduite pour rester fluide — la rétablir (F)'
-        : 'Fixer la pleine qualité (F)';
+        ? 'Quality lowered to stay smooth — restore it (F)'
+        : 'Lock full quality (F)';
     this.button.title = label;
     this.button.setAttribute('aria-label', label);
     this.button.setAttribute('aria-pressed', String(fixed));
@@ -446,35 +465,126 @@ export class QualityButton {
 }
 
 // ------------------------------------------------------------------
-// Bandeau de commandes et écran de chargement
+// Raccourcis, aide du clavier et écran de chargement
 // ------------------------------------------------------------------
-export function buildKeymap(): void {
-  const keys: Array<[string, string]> = [
-    ['Z Q S D', 'déplacer'],
-    ['↑ ↓', 'altitude'],
-    ['← →', 'rotation'],
-    ['ESPACE', 'capture'],
-    ['MAJ ESPACE', 'avant / après'],
-    ['V', 'diagnostic'],
-    ['M', 'rendu'],
-    ['C', 'caméra'],
-    ['I', 'interface'],
-    ['F', 'qualité'],
-    ['H', 'mains'],
-    ['K', 'calibrer'],
-    ['MAJ', 'stabiliser'],
-    ['R', 'retour base'],
-    ['1-4', 'aléa'],
-    ['P', 'lancer'],
-    ['E', 'dégâts à la main'],
-    ['B / N', 'avant / après'],
-    ['J', 'jeu de données'],
-    ['MAJ J', 'jeu varié'],
-    ['O', 'modèle entraîné'],
-  ];
-  $('keymap').innerHTML = keys
-    .map(([k, v]) => `<div class="km"><kbd>${k}</kbd>${v}</div>`)
-    .join('');
+/**
+ * Les gestes du vol et de la capture : les seuls toujours affichés. Les
+ * optionnels disparaissent sur un écran étroit ; tout reste dans l'aide.
+ */
+const HINTS: Array<{ keys: string[]; label: string; optional?: boolean }> = [
+  { keys: ['Z Q S D'], label: 'move' },
+  { keys: ['↑ ↓'], label: 'altitude', optional: true },
+  { keys: ['← →'], label: 'yaw', optional: true },
+  { keys: ['SPACE'], label: 'capture' },
+  { keys: ['SHIFT', 'SPACE'], label: 'before / after' },
+];
+
+/** Toutes les touches, rangées par usage, pour l'aide (touche ?). */
+const KEY_GROUPS: Array<[string, Array<[string, string]>]> = [
+  [
+    'FLIGHT',
+    [
+      ['Z Q S D', 'move'],
+      ['↑ ↓', 'altitude'],
+      ['← →', 'yaw'],
+      ['SHIFT', 'hold position'],
+      ['R', 'return home'],
+    ],
+  ],
+  [
+    'CAMERA & CAPTURE',
+    [
+      ['C', 'follow / onboard'],
+      ['T', 'nadir view'],
+      ['SPACE', 'capture'],
+      ['SHIFT SPACE', 'before / after'],
+      ['V', 'diagnostic'],
+      ['O', 'trained model'],
+    ],
+  ],
+  [
+    'DISASTER',
+    [
+      ['1 – 4', 'hazard'],
+      ['P', 'start / pause'],
+      ['B', 'before'],
+      ['N', 'after'],
+      ['E', 'manual damage'],
+      ['BACKSPACE', 'cancel'],
+    ],
+  ],
+  [
+    'DISPLAY & DATA',
+    [
+      ['M', 'render'],
+      ['F', 'quality'],
+      ['I', 'interface'],
+      ['H', 'hands'],
+      ['K', 'calibrate'],
+      ['J', 'dataset'],
+      ['SHIFT J', 'varied dataset'],
+    ],
+  ],
+];
+
+/**
+ * Raccourcis et aide du clavier. Vingt-deux touches affichées en permanence
+ * faisaient un mur de texte au bas de l'écran ; la ligne n'en garde que cinq,
+ * et « ? » ouvre les autres, rangées en quatre groupes.
+ */
+export class KeyHelp {
+  private box = $('keys-help');
+  private more = document.createElement('button');
+
+  constructor() {
+    const bar = $('keymap');
+    bar.innerHTML = HINTS.map(
+      (h) =>
+        `<div class="km${h.optional ? ' opt' : ''}">${h.keys.map((k) => `<kbd>${k}</kbd>`).join(' ')}${h.label}</div>`,
+    ).join('');
+    this.more.type = 'button';
+    this.more.className = 'km km-more';
+    this.more.title = 'All keys (?)';
+    this.more.innerHTML = '<kbd>?</kbd>all keys';
+    this.more.addEventListener('click', () => {
+      // ESPACE, qui prend les photos, ne doit pas le redéclencher.
+      this.more.blur();
+      this.toggle();
+    });
+    bar.appendChild(this.more);
+
+    const columns = KEY_GROUPS.map(
+      ([title, keys]) =>
+        `<div class="keys-col"><h3>${escapeHtml(title)}</h3><ul>${keys
+          .map(([k, v]) => `<li><kbd>${k}</kbd><span>${v}</span></li>`)
+          .join('')}</ul></div>`,
+    ).join('');
+    this.box.innerHTML = `<section class="panel" role="dialog" aria-label="Keyboard">
+      <header><span class="dot live"></span> KEYBOARD<span class="spacer"></span>
+        <span class="close-hint"><kbd>?</kbd>or<kbd>ESC</kbd>to close</span></header>
+      <div class="keys-cols">${columns}</div>
+    </section>`;
+    // Un clic à côté du panneau le ferme, comme Échap.
+    this.box.addEventListener('click', (e) => {
+      if (e.target === this.box) this.close();
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !this.box.hidden) this.close();
+    });
+  }
+
+  toggle(): void {
+    this.show(this.box.hidden);
+  }
+
+  close(): void {
+    this.show(false);
+  }
+
+  private show(open: boolean): void {
+    this.box.hidden = !open;
+    this.more.classList.toggle('on', open);
+  }
 }
 
 export const boot = {
@@ -508,24 +618,23 @@ export function showSoftwareRenderingWarning(renderer: string): void {
 
   el.innerHTML = '';
   const title = document.createElement('strong');
-  title.textContent =
-    'Rendu logiciel : la 3D est calculée par le processeur, pas par la carte graphique.';
+  title.textContent = 'Software rendering: the 3D is computed by the CPU, not the graphics card.';
 
   const fix = document.createElement('p');
   fix.textContent =
-    "Le simulateur sera très lent. Activer « Utiliser l'accélération graphique » dans " +
-    'chrome://settings/system, puis relancer le navigateur. Sur un portable à deux ' +
-    'cartes graphiques, attribuer aussi le navigateur à la carte dédiée : Paramètres ' +
-    'Windows → Système → Écran → Graphiques.';
+    'The simulator will be very slow. Turn on "Use graphics acceleration" in ' +
+    'chrome://settings/system, then restart the browser. On a laptop with two ' +
+    'graphics cards, also assign the browser to the dedicated one: Windows ' +
+    'Settings → System → Display → Graphics.';
 
   const detail = document.createElement('small');
-  detail.textContent = `Moteur détecté : ${renderer}`;
+  detail.textContent = `Detected renderer: ${renderer}`;
 
   const close = document.createElement('button');
   close.type = 'button';
   close.textContent = '×';
-  close.title = 'Masquer';
-  close.setAttribute('aria-label', "Masquer l'alerte");
+  close.title = 'Hide';
+  close.setAttribute('aria-label', 'Hide the alert');
   close.addEventListener('click', () => el?.remove());
 
   el.append(close, title, fix, detail);

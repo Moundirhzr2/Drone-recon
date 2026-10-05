@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -16,36 +16,62 @@
     <!-- Overlay de diagnostic dessine par-dessus la vue principale -->
     <canvas id="overlay-main"></canvas>
 
-    <!-- HUD GPS : haut gauche -->
+    <!-- Télémétrie : haut gauche. Le détail s'ouvre d'un clic sur l'en-tête. -->
     <section id="hud-gps" class="panel">
-      <header>
-        <span class="dot" id="gps-fix"></span> TELEMETRIE
+      <header id="gps-header" title="More telemetry">
+        <span class="dot" id="gps-fix"></span> TELEMETRY
         <span class="spacer"></span>
-        <span id="gps-mode" class="tag">MANUEL</span>
+        <span id="gps-mode" class="tag">MANUAL</span>
+        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
       </header>
-      <div class="rows" id="gps-rows"></div>
-      <div class="compass">
-        <svg viewBox="-60 -60 120 120" id="compass-svg">
+      <div class="inst">
+        <div><span class="k">ALTITUDE</span><b data-v="agl">—</b><span class="u">m</span></div>
+        <div><span class="k">SPEED</span><b data-v="spd">—</b><span class="u">m/s</span></div>
+      </div>
+      <div class="nav">
+        <svg viewBox="-60 -60 120 120" id="compass-svg" aria-hidden="true">
           <circle cx="0" cy="0" r="52" class="c-ring" />
           <g id="compass-rose">
-            <text x="0" y="-38" class="c-card">N</text>
+            <text x="0" y="-36" class="c-card">N</text>
             <text x="40" y="5" class="c-card">E</text>
             <text x="0" y="46" class="c-card">S</text>
-            <text x="-40" y="5" class="c-card">O</text>
+            <text x="-40" y="5" class="c-card">W</text>
             <line x1="0" y1="-52" x2="0" y2="-44" class="c-tick" />
           </g>
           <polygon points="0,-30 7,10 0,3 -7,10" class="c-needle" />
         </svg>
-        <div class="c-val"><b id="compass-deg">000</b>°</div>
+        <div>
+          <span class="k">HEADING</span><b class="acc"><span id="compass-deg">000</span>°</b>
+        </div>
+        <div>
+          <span class="k">BATTERY</span><b data-v="bat">—</b>
+          <span class="bar"><i id="gps-battery"></i></span>
+        </div>
       </div>
+      <div class="gps-alert" id="gps-alert" hidden></div>
+      <div class="rows" id="gps-rows" hidden></div>
+      <footer>
+        <span data-v="pos">—</span><span>HOME <b data-v="home">—</b> m</span>
+      </footer>
     </section>
 
     <!-- Vue nadir : haut droite -->
     <section id="hud-nadir" class="panel">
       <header>
-        <span class="dot live"></span> CAMERA NADIR
+        <span class="dot live"></span> NADIR CAMERA
         <span class="spacer"></span>
-        <span id="nadir-mode" class="tag">BRUT</span>
+        <span id="nadir-mode" class="tag">RAW</span>
+        <button
+          id="nadir-pov"
+          class="ico-btn"
+          type="button"
+          title="Full-screen view, from the drone (T)"
+          aria-label="Full-screen view, from the drone (T)"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+          </svg>
+        </button>
       </header>
       <div class="nadir-stack">
         <canvas id="nadir-canvas" width="340" height="340"></canvas>
@@ -53,33 +79,55 @@
         <div class="reticle"></div>
         <div class="nadir-foot"><span id="nadir-footprint">—</span></div>
       </div>
-      <div class="nadir-stats" id="nadir-stats"></div>
     </section>
 
-    <!-- Retour camera + etat des mains : bas gauche -->
-    <section id="hud-hands" class="panel">
+    <!-- Planche avant / après en vue nadir : voir capturePair dans src/main.ts -->
+    <div id="pair-preview" hidden>
+      <figure>
+        <div id="pair-preview-images"></div>
+        <figcaption>
+          <span id="pair-preview-caption"></span>
+          <button id="pair-preview-close" type="button">Close <kbd>ESC</kbd></button>
+        </figcaption>
+      </figure>
+    </div>
+
+    <!-- Pilotage : bas gauche. Sans les mains, une simple pastille. -->
+    <section id="hud-hands" class="panel off">
       <header>
-        <span class="dot" id="hands-dot"></span> PILOTAGE
+        <span class="dot" id="hands-dot"></span> PILOTING
         <span class="spacer"></span>
-        <span id="hands-source" class="tag">CLAVIER</span>
+        <span id="hands-source" class="tag">KEYBOARD</span>
       </header>
       <div class="cam-stack">
         <video id="webcam" playsinline muted></video>
         <canvas id="hands-canvas" width="480" height="360"></canvas>
       </div>
       <div class="sticks">
-        <div class="stick" data-label="G"><div class="knob" id="stick-l"></div></div>
-        <div class="stick" data-label="D"><div class="knob" id="stick-r"></div></div>
+        <div class="stick" data-label="L"><div class="knob" id="stick-l"></div></div>
+        <div class="stick" data-label="R"><div class="knob" id="stick-r"></div></div>
       </div>
-      <div class="hands-msg" id="hands-msg">Mains inactives — touche H pour activer</div>
+      <div class="hands-msg" id="hands-msg"></div>
+      <button id="hands-pill" class="hands-pill" type="button" title="Fly with your hands (H)">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M18 11V6a2 2 0 0 0-4 0" />
+          <path d="M14 10V4a2 2 0 0 0-4 0v2" />
+          <path d="M10 10.5V6a2 2 0 0 0-4 0v8" />
+          <path
+            d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"
+          />
+        </svg>
+        Hand control off<kbd>H</kbd>
+      </button>
     </section>
 
-    <!-- Rapport de diagnostic : bas droite -->
-    <section id="hud-report" class="panel collapsed">
+    <!-- Rapport de diagnostic : bas droite, seulement avec V ou O -->
+    <section id="hud-report" class="panel collapsed" hidden>
       <header id="report-header">
         <span class="dot warn"></span> DIAGNOSTIC
         <span class="spacer"></span>
         <span id="report-count" class="tag">0</span>
+        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
       </header>
       <div class="report-body" id="report-body"></div>
     </section>
@@ -87,31 +135,33 @@
     <!-- Simulateur de desastres : partie 2 -->
     <section id="hud-disaster" class="panel collapsed">
       <header id="disaster-header">
-        <span class="dot" id="disaster-dot"></span> SIMULATEUR
+        <span class="dot" id="disaster-dot"></span>
+        <span class="title" id="disaster-title">SIMULATOR</span>
         <span class="spacer"></span>
-        <span id="disaster-tag" class="tag">INACTIF</span>
+        <span id="disaster-tag" class="tag">IDLE</span>
+        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
       </header>
       <div class="disaster-body">
         <div class="dis-kinds" id="dis-kinds"></div>
         <p class="dis-blurb" id="dis-blurb"></p>
 
         <label class="dis-field">
-          <span id="dis-mag-label">Intensite</span>
+          <span id="dis-mag-label">Intensity</span>
           <input type="range" id="dis-mag" min="5" max="10" step="0.5" value="8.5" />
           <b id="dis-mag-value">8.5</b>
         </label>
 
         <label class="dis-field" id="dis-wind-field">
-          <span>Vent de</span>
+          <span>Wind from</span>
           <input type="range" id="dis-wind" min="0" max="350" step="10" value="225" />
           <b id="dis-wind-value">225&deg;</b>
         </label>
 
         <div class="dis-transport">
-          <button id="dis-play" class="dis-btn wide">Lancer</button>
-          <button id="dis-start" class="dis-btn" title="Revenir avant le sinistre">Avant</button>
-          <button id="dis-end" class="dis-btn" title="Sauter au bilan final">Apres</button>
-          <button id="dis-reset" class="dis-btn" title="Annuler le sinistre">Annuler</button>
+          <button id="dis-play" class="dis-btn wide">Start</button>
+          <button id="dis-start" class="dis-btn" title="Back to before the disaster">Before</button>
+          <button id="dis-end" class="dis-btn" title="Jump to the final state">After</button>
+          <button id="dis-reset" class="dis-btn" title="Cancel the disaster">Cancel</button>
         </div>
 
         <input
@@ -126,13 +176,13 @@
         <div class="dis-clock"><span id="dis-time">0.0 s</span><span id="dis-of">/ 0 s</span></div>
 
         <div class="dis-tally" id="dis-tally"></div>
-        <div class="dis-note" id="dis-note">Choisir un alea, puis Lancer.</div>
+        <div class="dis-note" id="dis-note">Choose a hazard, then Start.</div>
 
         <!-- Dégâts posés à la main : voir src/hud/editor.ts -->
         <div class="dis-section">
           <div class="dis-section-head">
-            <span>DÉGÂTS À LA MAIN</span>
-            <button id="dis-edit-toggle" class="dis-btn" type="button">Sélectionner (E)</button>
+            <span>MANUAL DAMAGE</span>
+            <button id="dis-edit-toggle" class="dis-btn" type="button">Select (E)</button>
           </div>
           <p class="dis-edit-sel" id="dis-edit-sel"></p>
           <div class="dis-edit-states" id="dis-edit-states"></div>
@@ -140,30 +190,34 @@
 
         <!-- Scénario en JSON : voir src/disaster/scenarioFile.ts -->
         <div class="dis-section">
-          <div class="dis-section-head"><span>SCÉNARIO</span></div>
+          <div class="dis-section-head"><span>SCENARIO</span></div>
           <div class="dis-file">
             <input
               id="dis-file-name"
               type="text"
               maxlength="80"
-              placeholder="Nom du scénario"
-              aria-label="Nom du scénario"
+              placeholder="Scenario name"
+              aria-label="Scenario name"
             />
-            <button id="dis-save" class="dis-btn" type="button">Enregistrer</button>
-            <button id="dis-load" class="dis-btn" type="button">Charger</button>
+            <button id="dis-save" class="dis-btn" type="button">Save</button>
+            <button id="dis-load" class="dis-btn" type="button">Load</button>
           </div>
           <button id="dis-pair" class="dis-btn dis-pair" type="button">
-            Capturer avant / après (Maj + Espace)
+            Capture before / after (Shift + Space)
           </button>
         </div>
       </div>
     </section>
 
-    <!-- Galerie de photos -->
+    <!-- Galerie de photos : elle apparaît à la première -->
     <section id="hud-gallery" class="panel"><div id="gallery-strip"></div></section>
 
-    <!-- Bandeau de commandes -->
-    <footer id="keymap"></footer>
+    <!-- Raccourcis du vol, sur une ligne ; toutes les touches avec « ? » -->
+    <footer id="keymap" class="panel"></footer>
+    <div id="keys-help" hidden></div>
+
+    <!-- Messages passagers : au-dessus des raccourcis -->
+    <div id="toast" class="panel" role="status" aria-live="polite"></div>
 
     <!-- Masquer l'interface : seul ce bouton reste affiche -->
     <button id="hud-toggle" type="button">
@@ -185,12 +239,12 @@
         type="text"
         maxlength="120"
         autocomplete="off"
-        placeholder="Ville, adresse, ou « 48.58, 7.75 »"
-        aria-label="Lieu du vol"
+        placeholder="City, address, or 48.58, 7.75"
+        aria-label="Flight location"
       />
       <div id="place-results"></div>
       <p id="place-note" class="place-note"></p>
-      <button id="place-home" class="dis-btn" type="button" hidden>Revenir à Mulhouse</button>
+      <button id="place-home" class="dis-btn" type="button" hidden>Back to Mulhouse</button>
     </section>
 
     <!-- Flash de prise de vue -->
@@ -200,7 +254,7 @@
     <div id="boot">
       <div class="boot-inner">
         <h1>DRONE RECON</h1>
-        <p id="boot-msg">Initialisation…</p>
+        <p id="boot-msg">Starting…</p>
         <div class="boot-bar"><i id="boot-bar"></i></div>
       </div>
     </div>

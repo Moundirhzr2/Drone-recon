@@ -139,7 +139,7 @@ export class WebcamVision {
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) throw new Error('Canvas 2D indisponible');
+    if (!ctx) throw new Error('2D canvas unavailable');
     return { ctx, rgba: new this.cv.Mat(height, width, this.cv.CV_8UC4), width, height };
   }
 
@@ -273,7 +273,7 @@ export class WebcamVision {
     overlay.lines.forEach((line, i) => {
       text(line, 6 * scale, h - (8 + (overlay.lines.length - 1 - i) * 16) * scale, 0.42);
     });
-    if (this.correcting) text('LUMIERE CORRIGEE', 6 * scale, 14 * scale, 0.38, rgba(255, 196, 0));
+    if (this.correcting) text('LIGHT CORRECTED', 6 * scale, 14 * scale, 0.38, rgba(255, 196, 0));
     if (overlay.countdown !== null) {
       text(
         overlay.countdown.toFixed(1),

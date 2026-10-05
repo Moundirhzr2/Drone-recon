@@ -234,19 +234,19 @@ function roofOf(code: string | null): RoofMaterial {
 function labelOf(kind: BuildingKind, floors: number): string {
   switch (kind) {
     case 'residentiel':
-      return floors >= 3 ? 'Immeuble résidentiel' : 'Maison';
+      return floors >= 3 ? 'Apartment building' : 'House';
     case 'commerce':
-      return 'Commerces et services';
+      return 'Shops and services';
     case 'religieux':
-      return 'Édifice religieux';
+      return 'Religious building';
     case 'annexe':
-      return 'Annexe';
+      return 'Outbuilding';
     case 'industriel':
-      return 'Bâtiment industriel';
+      return 'Industrial building';
     case 'sportif':
-      return 'Équipement sportif';
+      return 'Sports facility';
     default:
-      return 'Bâtiment';
+      return 'Building';
   }
 }
 

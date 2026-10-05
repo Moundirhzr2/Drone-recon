@@ -40,6 +40,12 @@ export interface NadirGeometry {
 }
 
 export class NadirView {
+  /**
+   * Enveloppe de la passe de rendu : de quoi masquer ce qui ne doit pas être
+   * photographié — le drone et l'anneau qui marque le sol sous lui.
+   */
+  around: (draw: () => void) => void = (draw) => draw();
+
   private lastRender = 0;
   private interval = 1000 / CONFIG.nadir.fps;
   /** Dernière géométrie de prise de vue, pour l'overlay de diagnostic. */
@@ -107,7 +113,7 @@ export class NadirView {
     // prend l'heure système, qui n'est pas celle de l'horloge de la scène : les
     // systèmes de particules, mis à jour à chaque passe, verraient alors le
     // temps faire des bonds et émettraient des milliers d'éléments d'un coup.
-    this.scene.render(this.scene.lastRenderTime);
+    this.around(() => this.scene.render(this.scene.lastRenderTime));
 
     const src = this.scene.canvas;
     const side = Math.min(src.width, src.height);

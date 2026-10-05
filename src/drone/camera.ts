@@ -1,10 +1,12 @@
 /**
  * Caméra d'observation.
  *
- * Deux vues, une seule caméra Cesium :
+ * Trois vues, une seule caméra Cesium :
  *  - SUIVI : derrière et au-dessus du drone. C'est la vue par défaut, parce
  *    qu'on ne pilote pas bien un appareil qu'on ne voit pas.
  *  - FPV : à bord, regard vers l'avant.
+ *  - NADIR : à bord, regard droit vers le sol, le cap en haut de l'écran — ce
+ *    que voit la caméra nadir, en grand (touche T).
  *
  * La caméra de suivi traîne volontairement derrière sa cible (lissage
  * exponentiel). Une caméra parfaitement rigide donne l'impression que le décor
@@ -28,7 +30,7 @@ import * as Cesium from 'cesium';
 import { clamp, DEG } from '../core/math';
 import type { DroneState } from './drone';
 
-export type CameraMode = 'suivi' | 'fpv';
+export type CameraMode = 'suivi' | 'fpv' | 'nadir';
 
 export class DroneCamera {
   // Vue embarquée par défaut : c'est la vue d'un vrai pilote de drone, et elle
@@ -54,8 +56,23 @@ export class DroneCamera {
     this.lift = clamp(this.distance * 0.34, 3, 60);
   }
 
+  /** La vue d'avant la vue nadir, pour y revenir. */
+  private beforeNadir: CameraMode = 'fpv';
+
   toggle(): CameraMode {
-    this.mode = this.mode === 'suivi' ? 'fpv' : 'suivi';
+    if (this.mode === 'nadir') this.mode = this.beforeNadir;
+    else this.mode = this.mode === 'suivi' ? 'fpv' : 'suivi';
+    return this.mode;
+  }
+
+  /** Passe la vue principale à la verticale du drone, ou revient à la précédente. */
+  toggleNadir(): CameraMode {
+    if (this.mode === 'nadir') {
+      this.mode = this.beforeNadir;
+    } else {
+      this.beforeNadir = this.mode;
+      this.mode = 'nadir';
+    }
     return this.mode;
   }
 
@@ -63,6 +80,28 @@ export class DroneCamera {
   update(dt: number): void {
     const s = this.state;
     const target = Cesium.Cartesian3.fromDegrees(s.lon, s.lat, s.msl);
+
+    if (this.mode === 'nadir') {
+      // Juste sous le châssis, comme la caméra nadir (`drone/nadir.ts`).
+      const eye = Cesium.Cartesian3.fromDegrees(s.lon, s.lat, s.msl - 0.9);
+      const enu = Cesium.Transforms.eastNorthUpToFixedFrame(eye);
+      const h = s.heading * DEG;
+      const direction = Cesium.Matrix4.multiplyByPointAsVector(
+        enu,
+        new Cesium.Cartesian3(0, 0, -1),
+        new Cesium.Cartesian3(),
+      );
+      // Haut de l'écran : le cap du drone, comme sur la vignette.
+      const up = Cesium.Matrix4.multiplyByPointAsVector(
+        enu,
+        new Cesium.Cartesian3(Math.sin(h), Math.cos(h), 0),
+        new Cesium.Cartesian3(),
+      );
+      Cesium.Cartesian3.normalize(direction, direction);
+      Cesium.Cartesian3.normalize(up, up);
+      this.camera.setView({ destination: eye, orientation: { direction, up } });
+      return;
+    }
 
     if (this.mode === 'fpv') {
       // À bord : on regarde légèrement vers le bas, comme une nacelle de recon.

@@ -50,8 +50,8 @@ import { CHUNK_SINK, debrisChunks, hash01, heapOf, ruinWalls } from './ruins';
 export type RenderMode = 'realiste' | 'wireframe' | 'scan';
 
 export const RENDER_LABEL: Record<RenderMode, string> = {
-  realiste: 'RÉALISTE',
-  wireframe: 'FIL DE FER',
+  realiste: 'REALISTIC',
+  wireframe: 'WIREFRAME',
   scan: 'SCAN',
 };
 
@@ -320,6 +320,8 @@ export class BuildingRenderer {
   private byId = new Map<string, Building>();
   private mode: RenderMode = 'realiste';
   private diagnostic = false;
+  /** L'aléa en cours, voir `setHazard`. */
+  private hazard: string | null = null;
   /** Ville photoréaliste : en vue réaliste, Google montre les bâtiments debout. */
   private photoreal = false;
   /** Les ruines sont à recolorer (changement de vue). */
@@ -524,6 +526,16 @@ export class BuildingRenderer {
 
   getRenderMode(): RenderMode {
     return this.mode;
+  }
+
+  /**
+   * L'aléa en cours : il décide de l'aspect d'un bâtiment fissuré — fissures
+   * pour un séisme ou une explosion, trace de l'eau pour une crue.
+   */
+  setHazard(kind: string | null): void {
+    if (kind === this.hazard) return;
+    this.hazard = kind;
+    for (const chunk of this.chunks.values()) chunk.repaint = true;
   }
 
   setDiagnostic(on: boolean): void {
@@ -1076,8 +1088,9 @@ export class BuildingRenderer {
    * Le canal ALPHA porte les interrupteurs du shader de façades : ils sont les
    * seuls encore modifiables à chaud, `surf` étant figé dans la géométrie. À 1,
    * la texture ; vers 0,96, les pans de façade d'une ruine, sans vitres et
-   * couverts de poussière ; vers 0,85, des façades calcinées ; sous 0,75,
-   * l'aplat du diagnostic. Le rendu étant opaque, cet alpha n'a aucun autre
+   * couverts de poussière ; de 0,89 à 0,94, un bâtiment fissuré, selon sa
+   * gravité ; vers 0,85, des façades calcinées ; de 0,76 à 0,81, la trace
+   * d'une crue ; sous 0,75, l'aplat du diagnostic. Le rendu étant opaque, cet alpha n'a aucun autre
    * effet.
    */
   private colorFor(
@@ -1105,7 +1118,26 @@ export class BuildingRenderer {
       return flat ? classified : this.mode === 'wireframe' ? css('#00e5ff') : tint;
     }
     const ruinWall = pid.includes(':ruine:murs');
-    const alpha = flat ? 0.5 : burnt && !roofPart ? 0.85 : ruinWall ? 0.96 : 1;
+    // Fissuré : façades et toiture abîmées par le shader, d'autant plus que
+    // le dommage est grave (de 0,30 à 0,57 pour cet état, voir `fragility.ts`).
+    // Abîmé par une crue, le même état ne laisse ni fissure ni tuile cassée,
+    // mais la trace de l'eau au pied des façades.
+    const cracked = b.state === 'cracked' && !pid.includes(':ruine');
+    const severity = Math.min(1, Math.max(0, (b.damage - 0.3) / 0.27));
+    const soaked = cracked && this.hazard === 'inondation';
+    const alpha = flat
+      ? 0.5
+      : burnt && !roofPart
+        ? 0.85
+        : ruinWall
+          ? 0.96
+          : soaked
+            ? roofPart
+              ? 1
+              : 0.76 + 0.05 * severity
+            : cracked
+              ? 0.89 + 0.05 * severity
+              : 1;
     return (flat ? classified : tint).withAlpha(alpha);
   }
 
